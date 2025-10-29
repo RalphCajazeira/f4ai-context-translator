@@ -1,6 +1,16 @@
 fastapi==0.115.2
 uvicorn==0.30.6
 requests==2.32.3
-transformers==4.44.2
-sentencepiece==0.2.0
-torch
+
+# Transformers estável que funciona bem com M2M100 no Windows/Py311
+transformers==4.41.2
+
+# Versão com wheels prontas para Win/Py311
+sentencepiece==0.1.99
+
+# Tokenizers compatível; evita builds
+tokenizers==0.19.1
+
+# (opcional) se usar Torch CPU:
+# pip instala do índice oficial; se der conflito, instale manualmente o wheel do CPU
+# torch==2.3.1

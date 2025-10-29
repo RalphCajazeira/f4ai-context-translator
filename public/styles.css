@@ -5,7 +5,9 @@
   --accent: #4fb;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 body {
   margin: 0;
@@ -39,7 +41,9 @@ textarea {
   padding: 0.5rem 0.75rem;
 }
 
-button { cursor: pointer; }
+button {
+  cursor: pointer;
+}
 
 main.grid {
   display: grid;
@@ -59,9 +63,13 @@ main.grid {
   min-height: 60vh;
 }
 
-.panel h3 { margin: 0.25rem 0; }
+.panel h3 {
+  margin: 0.25rem 0;
+}
 
-.panel.side { min-height: auto; }
+.panel.side {
+  min-height: auto;
+}
 
 textarea {
   width: 100%;
@@ -96,7 +104,9 @@ textarea {
   cursor: pointer;
 }
 
-#alts li small { opacity: 0.7; }
+#alts li small {
+  opacity: 0.7;
+}
 
 .gloss-list {
   margin-top: 0.5rem;
@@ -135,7 +145,9 @@ footer {
   transition: background 0.2s;
 }
 
-.toolbar button:hover { background: #263140; }
+.toolbar button:hover {
+  background: #263140;
+}
 
 /* === Layout de duas colunas para os logs === */
 .logs-row {
@@ -195,7 +207,9 @@ footer {
   cursor: pointer;
 }
 
-.btn:hover { background: #263140; }
+.btn:hover {
+  background: #263140;
+}
 
 /* (Opcional) Responsivo simples para telas menores */
 @media (max-width: 1100px) {
@@ -205,5 +219,36 @@ footer {
   .logs-row {
     grid-template-columns: 1fr;
   }
-  .panel { min-height: auto; }
+  .panel {
+    min-height: auto;
+  }
+}
+
+/* Loading/Busy */
+button[disabled] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+textarea.busy {
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.05) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0.05) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 24px 24px;
+  animation: stripes 1s linear infinite;
+}
+@keyframes stripes {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 24px 0;
+  }
 }

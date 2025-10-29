@@ -7,8 +7,8 @@ const sourceEl = document.querySelector("#source")
 const targetEl = document.querySelector("#target")
 
 const btnTranslate = document.querySelector("#btnTranslate")
-const btnPasteTranslate = document.querySelector("#btnPasteTranslate") // NOVO
-const btnApprove = document.querySelector("#btnApprove") // aprova o que está nos textareas principais
+const btnPasteTranslate = document.querySelector("#btnPasteTranslate") // Colar & traduzir
+const btnApprove = document.querySelector("#btnApprove") // Aprova par atual (sem log)
 const altsEl = document.querySelector("#alts")
 
 const glossForm = document.querySelector("#glossForm")
@@ -27,10 +27,66 @@ swapBtn?.addEventListener("click", () => {
   tgtSel.value = s
 })
 
-// ========= Traduzir (com opção de log) =========
-btnTranslate?.addEventListener("click", () => doTranslate({ log: true }))
+// =============== UTILs de fetch on-demand (sem polling) ===============
+async function fetchJSON(url, opts) {
+  const r = await fetch(url, opts)
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json()
+}
 
-// NOVO: colar da área de transferência e traduzir (também gera log)
+async function fetchPending() {
+  try {
+    const rows = await fetchJSON("/api/logs?status=pending&limit=200")
+    renderPending(rows)
+  } catch (e) {
+    console.error("fetchPending:", e)
+  }
+}
+
+async function fetchApprovedTM() {
+  try {
+    const rows = await fetchJSON("/api/tm?limit=200")
+    renderApprovedTM(rows)
+  } catch (e) {
+    console.error("fetchApprovedTM:", e)
+  }
+}
+
+// === Loading para tradução (bloqueia botões e dá feedback visual) ===
+function setTranslating(on) {
+  // guarda rótulos originais na 1ª vez
+  if (!btnTranslate.dataset.label)
+    btnTranslate.dataset.label = btnTranslate.textContent
+  if (btnPasteTranslate && !btnPasteTranslate.dataset.label) {
+    btnPasteTranslate.dataset.label = btnPasteTranslate.textContent
+  }
+
+  if (on) {
+    btnTranslate.textContent = "Traduzindo..."
+    btnTranslate.disabled = true
+    if (btnPasteTranslate) {
+      btnPasteTranslate.textContent = "Traduzindo..."
+      btnPasteTranslate.disabled = true
+    }
+    targetEl.classList.add("busy")
+  } else {
+    btnTranslate.textContent = btnTranslate.dataset.label || "Traduzir"
+    btnTranslate.disabled = false
+    if (btnPasteTranslate) {
+      btnPasteTranslate.textContent =
+        btnPasteTranslate.dataset.label || "📥 Trad."
+      btnPasteTranslate.disabled = false
+    }
+    targetEl.classList.remove("busy")
+  }
+}
+
+// ========= Traduzir (gera ou não log) =========
+btnTranslate?.addEventListener("click", () =>
+  doTranslate({ log: true, refreshAfter: "pending" })
+)
+
+// Colar & Traduzir (gera log também)
 btnPasteTranslate?.addEventListener("click", async () => {
   try {
     const clip = (await navigator.clipboard.readText()) || ""
@@ -38,7 +94,7 @@ btnPasteTranslate?.addEventListener("click", async () => {
     if (!text) return alert("A área de transferência está vazia.")
     sourceEl.value = text // preenche o original
     targetEl.value = "" // limpa o destino
-    doTranslate({ log: true })
+    doTranslate({ log: true, refreshAfter: "pending" })
   } catch (e) {
     alert(
       "Não consegui ler a área de transferência. Dê permissão ao navegador."
@@ -46,7 +102,7 @@ btnPasteTranslate?.addEventListener("click", async () => {
   }
 })
 
-async function doTranslate({ log = true } = {}) {
+async function doTranslate({ log = true, refreshAfter = null } = {}) {
   const text = sourceEl.value.trim()
   if (!text) return
 
@@ -55,21 +111,27 @@ async function doTranslate({ log = true } = {}) {
     src: srcSel.value,
     tgt: tgtSel.value,
     preserveLines: !!(preserveLinesChk && preserveLinesChk.checked),
-    log, // <- só loga quando solicitado
+    log,
     origin: "ui",
   }
 
-  const r = await fetch("/api/translate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
+  setTranslating(true)
+  try {
+    const j = await fetchJSON("/api/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
 
-  const j = await r.json()
-  if (j.error) return alert(j.error)
+    if (j.error) return alert(j.error)
+    targetEl.value = j.best || ""
+    renderAlts(j.candidates || [])
 
-  targetEl.value = j.best || ""
-  renderAlts(j.candidates || [])
+    // Atualiza coluna de pendentes só quando pediu log
+    if (refreshAfter === "pending") await fetchPending()
+  } finally {
+    setTranslating(false)
+  }
 }
 
 // ========= Alternativas =========
@@ -91,21 +153,31 @@ function renderAlts(items) {
 }
 
 // ========= Aprovar par atual (do editor principal) =========
-// Observação: isso NÃO cria log; grava direto na TM.
+// NÃO cria log; grava direto na TM e atualiza a coluna de aprovados on-demand.
 btnApprove?.addEventListener("click", async () => {
   const src = sourceEl.value.trim()
   const tgt = targetEl.value.trim()
   if (!src || !tgt) return alert("Forneça texto original e tradução.")
 
-  const r = await fetch("/api/translate/approve", {
+  const j = await fetchJSON("/api/translate/approve", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ source_text: src, target_text: tgt }),
+    body: JSON.stringify({
+      source_text: src,
+      target_text: tgt,
+      removeFromLog: true,
+    }),
   })
-  const j = await r.json()
+
   if (j?.ok) {
-    alert("Par salvo na memória!")
-    await pollApprovedTM() // atualiza coluna da memória
+    // remove o pendente retornado pelo backend (se houver)
+    if (j.removedLogId) {
+      const li = document.querySelector(
+        `#logPending li[data-id="${j.removedLogId}"]`
+      )
+      if (li) li.remove()
+    }
+    await fetchApprovedTM() // atualiza a coluna de Aprovados (TM)
   }
 })
 
@@ -115,20 +187,19 @@ glossForm?.addEventListener("submit", async (e) => {
   const fd = new FormData(glossForm)
   const payload = Object.fromEntries(fd.entries())
 
-  const r = await fetch("/api/glossary", {
+  const j = await fetchJSON("/api/glossary", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   })
-  const j = await r.json()
   if (j.error) return alert(j.error)
 
   glossForm.reset()
-  loadGloss()
+  await loadGloss() // busca apenas ao concluir ação
 })
 
 async function loadGloss() {
-  const items = await fetch("/api/glossary").then((r) => r.json())
+  const items = await fetchJSON("/api/glossary")
   glossList.innerHTML = items
     .map(
       (i) =>
@@ -143,37 +214,27 @@ function escapeHTML(s) {
   return (s || "").replace(
     /[&<>"']/g,
     (m) =>
-      ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;",
-      }[m])
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[
+        m
+      ])
   )
 }
 
 /* =====================================================================================
-   PENDENTES  (translation_logs.approved = 0)  — editável, com "lock" local para polling
+   PENDENTES  (translation_logs.approved = 0) — editável, sem polling
    ===================================================================================== */
-
-// Controle de edição: impede o polling de sobrescrever enquanto o usuário digita
-const editingLocks = new Set() // guarda IDs de logs em edição
 
 function renderPending(rows) {
   const byId = new Map(rows.map((r) => [r.id, r]))
 
-  // remove cards que sumiram do servidor (e não estão lockados)
+  // remove cards que sumiram do servidor
   Array.from(logPendingEl.children).forEach((li) => {
     const id = Number(li.dataset.id)
-    if (!byId.has(id) && !editingLocks.has(id)) {
-      li.remove()
-    }
+    if (!byId.has(id)) li.remove()
   })
 
   rows.forEach((row) => {
     let li = logPendingEl.querySelector(`li[data-id="${row.id}"]`)
-
     if (!li) {
       // Cria novo card
       li = document.createElement("li")
@@ -194,62 +255,52 @@ function renderPending(rows) {
           <button class="btn copy">Copiar para editor</button>
         </div>
       `
-
       const srcTA = li.querySelector(".src")
       const tgtTA = li.querySelector(".tgt")
-
-      // Preenche ao criar
       srcTA.value = row.source_text || ""
       tgtTA.value = row.target_text || ""
 
-      // Locks de edição
-      const lockOn = () => editingLocks.add(row.id)
-      const lockOff = () => editingLocks.delete(row.id)
-      srcTA.addEventListener("input", lockOn)
-      tgtTA.addEventListener("input", lockOn)
-      srcTA.addEventListener("blur", lockOff)
-      tgtTA.addEventListener("blur", lockOff)
-
       // Salvar alterações no log (sem aprovar)
       li.querySelector(".save").addEventListener("click", async () => {
-        const r = await fetch(`/api/logs/${row.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            source_text: srcTA.value,
-            target_text: tgtTA.value,
-          }),
-        })
-        if (!r.ok) alert("Não foi possível salvar a alteração deste log.")
-        editingLocks.delete(row.id)
+        try {
+          await fetchJSON(`/api/logs/${row.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              source_text: srcTA.value,
+              target_text: tgtTA.value,
+            }),
+          })
+          // Sem reload; fica local
+        } catch {
+          alert("Não foi possível salvar a alteração deste log.")
+        }
       })
 
-      // Aprovar usando o TEXTO EDITADO (grava na TM)
+      // Aprovar (grava na TM) e remove da lista; depois atualiza TM sob demanda
       li.querySelector(".approve").addEventListener("click", async () => {
-        const r = await fetch(`/api/logs/${row.id}/approve`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            source_text: srcTA.value,
-            target_text: tgtTA.value,
-          }),
-        })
-        if (r.ok) {
+        try {
+          await fetchJSON(`/api/logs/${row.id}/approve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              source_text: srcTA.value,
+              target_text: tgtTA.value,
+            }),
+          })
           li.remove()
-          editingLocks.delete(row.id)
-          await pollApprovedTM() // atualiza a coluna da memória
-        } else {
+          await fetchApprovedTM()
+        } catch {
           alert("Falha ao aprovar.")
         }
       })
 
-      // Reprovar
+      // Reprovar — apenas remove localmente
       li.querySelector(".reject").addEventListener("click", async () => {
-        const r = await fetch(`/api/logs/${row.id}/reject`, { method: "POST" })
-        if (r.ok) {
+        try {
+          await fetchJSON(`/api/logs/${row.id}/reject`, { method: "POST" })
           li.remove()
-          editingLocks.delete(row.id)
-        } else {
+        } catch {
           alert("Falha ao reprovar.")
         }
       })
@@ -262,27 +313,25 @@ function renderPending(rows) {
 
       logPendingEl.appendChild(li)
     } else {
-      // Atualização de card existente — só se NÃO estiver em edição
-      if (!editingLocks.has(row.id)) {
-        li.querySelector(".src").value = row.source_text || ""
-        li.querySelector(".tgt").value = row.target_text || ""
-        li.querySelector(".meta").textContent = `#${row.id} • ${
-          row.origin || "api"
-        } • ${row.created_at}`
-      }
+      // Atualiza card existente (sem polling contínuo, só quando recarregamos pendentes)
+      li.querySelector(".src").value = row.source_text || ""
+      li.querySelector(".tgt").value = row.target_text || ""
+      li.querySelector(".meta").textContent = `#${row.id} • ${
+        row.origin || "api"
+      } • ${row.created_at}`
     }
   })
 }
 
 /* ============================================================
-   APROVADOS (TM) — agora lê /edita/exclui direto em /api/tm
+   APROVADOS (TM) — lê/edita/exclui direto; sem polling
    ============================================================ */
 
 function renderApprovedTM(rows = []) {
   const list = document.querySelector("#logApproved")
   if (!list) return
 
-  const escapeHTMLLocal = (s) =>
+  const esc = (s) =>
     String(s ?? "").replace(
       /[&<>"']/g,
       (m) =>
@@ -295,8 +344,8 @@ function renderApprovedTM(rows = []) {
         }[m])
     )
 
+  // Reconstrói a lista conforme a resposta (evento é raro, somente em ações)
   list.innerHTML = ""
-
   rows.forEach((row) => {
     const li = document.createElement("li")
     li.className = "log-item"
@@ -308,12 +357,12 @@ function renderApprovedTM(rows = []) {
     } • quality:${Number(row.quality ?? 0.9).toFixed(2)}</div>
 
       <label>Original (chave normalizada)</label>
-      <textarea class="src" readonly>${escapeHTMLLocal(
-        row.source_norm
-      )}</textarea>
+      <textarea class="src" readonly>${esc(row.source_norm)}</textarea>
 
       <label>Tradução (editar e salvar)</label>
-      <textarea class="tgt">${escapeHTMLLocal(row.target_text)}</textarea>
+      <textarea class="tgt" spellcheck="false">${esc(
+        row.target_text
+      )}</textarea>
 
       <div class="actions">
         <button class="btn update">Salvar edição</button>
@@ -328,112 +377,64 @@ function renderApprovedTM(rows = []) {
     const btnDel = li.querySelector(".del")
     const btnCopy = li.querySelector(".copy")
 
-    // SALVAR EDIÇÃO NA TM
+    // SALVAR EDIÇÃO NA TM (não recarrega toda a lista; atualiza só este card)
     btnSave.addEventListener("click", async () => {
       const target_text = (tgtTA.value || "").trim()
-      if (!target_text) {
-        alert("Tradução vazia.")
-        return
-      }
-
+      if (!target_text) return alert("Tradução vazia.")
       btnSave.disabled = true
       btnSave.textContent = "Salvando..."
-
       try {
-        const r = await fetch(`/api/tm/${row.id}`, {
+        const up = await fetchJSON(`/api/tm/${row.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ target_text }),
         })
-
-        if (!r.ok) {
-          const j = await r.json().catch(() => ({}))
-          throw new Error(j.error || `Falha ao salvar (${r.status})`)
-        }
-
-        const updated = await r.json()
-        tgtTA.value = updated.target_text ?? target_text
-        metaEl.textContent = `TM #${updated.id} • uses:${
-          updated.uses ?? row.uses ?? 0
-        } • quality:${Number(updated.quality ?? row.quality ?? 0.9).toFixed(2)}`
-
+        tgtTA.value = up.target_text ?? target_text
+        metaEl.textContent = `TM #${up.id} • uses:${
+          up.uses ?? row.uses ?? 0
+        } • quality:${Number(up.quality ?? row.quality ?? 0.9).toFixed(2)}`
         btnSave.textContent = "Salvo!"
         setTimeout(() => {
           btnSave.textContent = "Salvar edição"
           btnSave.disabled = false
         }, 600)
-      } catch (err) {
+      } catch (e) {
         btnSave.disabled = false
         btnSave.textContent = "Salvar edição"
-        alert(err.message || "Erro ao salvar edição.")
+        alert(e.message || "Erro ao salvar edição.")
       }
     })
 
-    // EXCLUIR DA TM
+    // EXCLUIR DA TM (remove apenas este item)
     btnDel.addEventListener("click", async () => {
       if (!confirm("Remover esta tradução da memória (TM)?")) return
-
       btnDel.disabled = true
       btnDel.textContent = "Excluindo..."
-
       try {
-        const r = await fetch(`/api/tm/${row.id}`, { method: "DELETE" })
-        if (!r.ok) {
-          const j = await r.json().catch(() => ({}))
-          throw new Error(j.error || `Falha ao excluir (${r.status})`)
-        }
+        await fetchJSON(`/api/tm/${row.id}`, { method: "DELETE" })
         li.remove()
-      } catch (err) {
+      } catch (e) {
         btnDel.disabled = false
         btnDel.textContent = "Excluir da TM"
-        alert(err.message || "Erro ao excluir.")
+        alert(e.message || "Erro ao excluir.")
       }
     })
 
     // COPIAR PARA O EDITOR PRINCIPAL
     btnCopy.addEventListener("click", () => {
-      // Usa o source_norm (normalizado) como original e a tradução editável atual
-      if (typeof sourceEl !== "undefined" && typeof targetEl !== "undefined") {
-        const srcText = li.querySelector(".src").value || row.source_norm || ""
-        sourceEl.value = srcText
-        targetEl.value = tgtTA.value || row.target_text || ""
-      }
+      sourceEl.value = li.querySelector(".src").value || row.source_norm || ""
+      targetEl.value = tgtTA.value || row.target_text || ""
     })
 
-    list.appendChild(li)
+    logApprovedEl.appendChild(li)
   })
 }
-
-// ========= Polling dos pendentes (translation_logs) =========
-async function pollPending() {
-  try {
-    const rows = await fetch(
-      "/api/logs?status=pending&limit=200&_=" + Date.now()
-    ).then((r) => r.json())
-    renderPending(rows)
-  } catch {}
-}
-
-// ========= Polling da TM (aprovados de verdade) =========
-async function pollApprovedTM() {
-  try {
-    const rows = await fetch("/api/tm?limit=200&_=" + Date.now()).then((r) =>
-      r.json()
-    )
-    renderApprovedTM(rows)
-  } catch {}
-}
-
-setInterval(pollPending, 2000)
-setInterval(pollApprovedTM, 5000)
 
 /* =======================
    Toolbar de edição (Unicode)
    ======================= */
 
-// Helpers Unicode
 const locale = "pt-BR"
-
 function tokenizeUnicodePieces(s) {
   const re = /(\p{L}[\p{L}\p{M}]*(?:[’'\-]\p{L}[\p{L}\p{M}]*)*)/gu
   const out = []
@@ -473,7 +474,7 @@ function getCapOptions() {
   return { minLen, ignoreSet }
 }
 
-// Botões
+// Botões da toolbar
 const btnCopy = document.querySelector("#btnCopy")
 const btnUpper = document.querySelector("#btnUpper")
 const btnLower = document.querySelector("#btnLower")
@@ -528,7 +529,9 @@ btnCapSentence?.addEventListener("click", () => {
   targetEl.value = out
 })
 
-// ========= Inicialização =========
-loadGloss()
-pollPending()
-pollApprovedTM()
+// ========= Inicialização (sem polling) =========
+;(async function init() {
+  await loadGloss() // uma vez ao carregar
+  await fetchPending() // carrega pendentes só agora
+  await fetchApprovedTM() // carrega aprovados só agora
+})()
