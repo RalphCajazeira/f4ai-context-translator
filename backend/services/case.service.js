@@ -67,3 +67,55 @@ export function projectGlossaryCaseInSentence(original, target, pairs = []) {
 
   return out
 }
+
+// services/case.service.js (trecho adicional)
+
+export function extractAllCapsTerms(original) {
+  // Pega tokens com 2+ letras 100% maiúsculas (ignora números/pontuação)
+  // Ex.: "He is very LUCKY and HANDSOME." -> ["LUCKY","HANDSOME"]
+  const set = new Set()
+  const re = /\b[\p{Lu}]{2,}\b/gu // Apenas letras maiúsculas (Unicode)
+  const s = String(original || "")
+  let m
+  while ((m = re.exec(s))) set.add(m[0])
+  return Array.from(set)
+}
+
+// === Unicode word helpers ===
+
+// Divide em tokens (palavras Unicode e "não-palavras"), preservando pontuação/espaços.
+function tokenizeUnicode(s) {
+  const re = /(\p{L}[\p{L}\p{M}]*)/gu // grupos de letras+marcas
+  const out = []
+  let last = 0
+  let m
+  while ((m = re.exec(s)) !== null) {
+    if (m.index > last) out.push(s.slice(last, m.index)) // trecho não-palavra
+    out.push(m[0]) // a palavra
+    last = re.lastIndex
+  }
+  if (last < s.length) out.push(s.slice(last))
+  return out
+}
+
+/**
+ * Substitui "needle" em "text" por "replacement" comparando palavras por lower-case Unicode,
+ * sem depender de \b. Preserva pontuação e espaçamento.
+ */
+export function replaceWordUnicode(text, needle, replacement) {
+  const t = String(text || "")
+  const n = String(needle || "")
+  if (!t || !n) return t
+
+  const nLower = n.toLocaleLowerCase()
+  const tokens = tokenizeUnicode(t)
+  for (let i = 0; i < tokens.length; i++) {
+    // só compara onde é palavra
+    if (/^\p{L}[\p{L}\p{M}]*$/u.test(tokens[i])) {
+      if (tokens[i].toLocaleLowerCase() === nLower) {
+        tokens[i] = replacement
+      }
+    }
+  }
+  return tokens.join("")
+}
