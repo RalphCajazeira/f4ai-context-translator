@@ -5,10 +5,12 @@ const swapBtn = document.querySelector("#swap")
 
 const sourceEl = document.querySelector("#source")
 const targetEl = document.querySelector("#target")
+const targetOverlay = document.querySelector("#targetOverlay")
+const targetPreview = document.querySelector("#targetPreview")
 
 const btnTranslate = document.querySelector("#btnTranslate")
-const btnPasteTranslate = document.querySelector("#btnPasteTranslate") // Colar & traduzir
-const btnApprove = document.querySelector("#btnApprove") // Aprova par atual (sem log)
+const btnPasteTranslate = document.querySelector("#btnPasteTranslate")
+const btnApprove = document.querySelector("#btnApprove")
 const altsEl = document.querySelector("#alts")
 
 const glossForm = document.querySelector("#glossForm")
@@ -54,13 +56,11 @@ async function fetchApprovedTM() {
 
 // === Loading para tradução (bloqueia botões e dá feedback visual) ===
 function setTranslating(on) {
-  // guarda rótulos originais na 1ª vez
   if (!btnTranslate.dataset.label)
     btnTranslate.dataset.label = btnTranslate.textContent
   if (btnPasteTranslate && !btnPasteTranslate.dataset.label) {
     btnPasteTranslate.dataset.label = btnPasteTranslate.textContent
   }
-
   if (on) {
     btnTranslate.textContent = "Traduzindo..."
     btnTranslate.disabled = true
@@ -86,22 +86,22 @@ btnTranslate?.addEventListener("click", () =>
   doTranslate({ log: true, refreshAfter: "pending" })
 )
 
-// Colar & Traduzir (gera log também)
+// Colar & Traduzir (gera log também) — NÃO limpar o texto traduzido atual
 btnPasteTranslate?.addEventListener("click", async () => {
   try {
     const clip = (await navigator.clipboard.readText()) || ""
     const text = clip.trim()
     if (!text) return alert("A área de transferência está vazia.")
-    sourceEl.value = text // preenche o original
-    targetEl.value = "" // limpa o destino
-    doTranslate({ log: true, refreshAfter: "pending" })
-  } catch (e) {
+    sourceEl.value = text
+    await doTranslate({ log: true, refreshAfter: "pending" })
+  } catch {
     alert(
       "Não consegui ler a área de transferência. Dê permissão ao navegador."
     )
   }
 })
 
+// ========= Função principal de tradução =========
 async function doTranslate({ log = true, refreshAfter = null } = {}) {
   const text = sourceEl.value.trim()
   if (!text) return
@@ -115,6 +115,10 @@ async function doTranslate({ log = true, refreshAfter = null } = {}) {
     origin: "ui",
   }
 
+  // 1) guarda o texto anterior e mostra na caixa "Versão anterior"
+  const previous = targetEl.value
+  if (targetPreview) targetPreview.textContent = previous || ""
+
   setTranslating(true)
   try {
     const j = await fetchJSON("/api/translate", {
@@ -122,17 +126,84 @@ async function doTranslate({ log = true, refreshAfter = null } = {}) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     })
+    if (j?.error) return alert(j.error)
 
-    if (j.error) return alert(j.error)
-    targetEl.value = j.best || ""
+    const newText = j.best || ""
+
+    // 2) mostra o diff (verde) por cima do textarea (overlay)
+    showDiff(previous, newText)
+
+    // 3) aplica o novo texto no textarea (substituição natural)
+    targetEl.value = newText
     renderAlts(j.candidates || [])
 
-    // Atualiza coluna de pendentes só quando pediu log
-    if (refreshAfter === "pending") await fetchPending()
+    if (refreshAfter === "pending" && log) await fetchPending()
   } finally {
     setTranslating(false)
   }
 }
+
+// ========= Diff para overlay (destaca apenas mudanças) =========
+function showDiff(oldText, newText) {
+  if (!targetOverlay) return
+
+  // se não há texto anterior → limpa e sai
+  if (!oldText) {
+    targetOverlay.classList.add("hidden")
+    targetOverlay.innerHTML = ""
+    if (targetPreview) targetPreview.textContent = ""
+    return
+  }
+
+  const oldWords = oldText.split(/\b/)
+  const newWords = newText.split(/\b/)
+  const len = Math.max(oldWords.length, newWords.length)
+
+  const overlayOut = [] // verde (novas palavras)
+  const previewOut = [] // vermelho (antigas palavras)
+
+  for (let i = 0; i < len; i++) {
+    const a = oldWords[i] || ""
+    const b = newWords[i] || ""
+
+    if (a === b) {
+      overlayOut.push(`<span class="diff-same">${escapeHTML(b)}</span>`)
+      previewOut.push(escapeHTML(a))
+    } else if (!a && b) {
+      // nova palavra
+      overlayOut.push(`<span class="diff-add">${escapeHTML(b)}</span>`)
+    } else if (a && !b) {
+      // palavra removida
+      previewOut.push(`<span class="diff-remove">${escapeHTML(a)}</span>`)
+    } else if (a.toLowerCase() !== b.toLowerCase()) {
+      // modificada
+      overlayOut.push(`<span class="diff-add">${escapeHTML(b)}</span>`)
+      previewOut.push(`<span class="diff-remove">${escapeHTML(a)}</span>`)
+    } else {
+      overlayOut.push(`<span class="diff-same">${escapeHTML(b)}</span>`)
+      previewOut.push(escapeHTML(a))
+    }
+  }
+
+  // aplica resultados
+  targetOverlay.innerHTML = overlayOut.join("")
+  targetOverlay.classList.remove("hidden")
+
+  if (targetPreview) targetPreview.innerHTML = previewOut.join("")
+
+  // sincroniza scroll
+  targetOverlay.scrollTop = targetEl.scrollTop
+  targetOverlay.scrollLeft = targetEl.scrollLeft
+}
+
+// oculta overlay ao editar manualmente
+targetEl.addEventListener("input", () => targetOverlay?.classList.add("hidden"))
+// sincroniza scroll do overlay com o textarea
+targetEl.addEventListener("scroll", () => {
+  if (!targetOverlay || targetOverlay.classList.contains("hidden")) return
+  targetOverlay.scrollTop = targetEl.scrollTop
+  targetOverlay.scrollLeft = targetEl.scrollLeft
+})
 
 // ========= Alternativas =========
 function renderAlts(items) {
@@ -145,15 +216,12 @@ function renderAlts(items) {
       it.score ? "• " + ((it.score * 100) | 0) + "%" : ""
     }</small>
     `
-    li.addEventListener("click", () => {
-      targetEl.value = it.text
-    })
+    li.addEventListener("click", () => (targetEl.value = it.text))
     altsEl.appendChild(li)
   })
 }
 
 // ========= Aprovar par atual (do editor principal) =========
-// NÃO cria log; grava direto na TM e atualiza a coluna de aprovados on-demand.
 btnApprove?.addEventListener("click", async () => {
   const src = sourceEl.value.trim()
   const tgt = targetEl.value.trim()
@@ -170,14 +238,13 @@ btnApprove?.addEventListener("click", async () => {
   })
 
   if (j?.ok) {
-    // remove o pendente retornado pelo backend (se houver)
     if (j.removedLogId) {
       const li = document.querySelector(
         `#logPending li[data-id="${j.removedLogId}"]`
       )
       if (li) li.remove()
     }
-    await fetchApprovedTM() // atualiza a coluna de Aprovados (TM)
+    await fetchApprovedTM()
   }
 })
 
@@ -195,7 +262,7 @@ glossForm?.addEventListener("submit", async (e) => {
   if (j.error) return alert(j.error)
 
   glossForm.reset()
-  await loadGloss() // busca apenas ao concluir ação
+  await loadGloss()
 })
 
 async function loadGloss() {
@@ -223,7 +290,6 @@ function escapeHTML(s) {
 /* =====================================================================================
    PENDENTES  (translation_logs.approved = 0) — editável, sem polling
    ===================================================================================== */
-
 function renderPending(rows) {
   const byId = new Map(rows.map((r) => [r.id, r]))
 
@@ -236,7 +302,6 @@ function renderPending(rows) {
   rows.forEach((row) => {
     let li = logPendingEl.querySelector(`li[data-id="${row.id}"]`)
     if (!li) {
-      // Cria novo card
       li = document.createElement("li")
       li.className = "log-item"
       li.dataset.id = row.id
@@ -260,7 +325,6 @@ function renderPending(rows) {
       srcTA.value = row.source_text || ""
       tgtTA.value = row.target_text || ""
 
-      // Salvar alterações no log (sem aprovar)
       li.querySelector(".save").addEventListener("click", async () => {
         try {
           await fetchJSON(`/api/logs/${row.id}`, {
@@ -271,13 +335,11 @@ function renderPending(rows) {
               target_text: tgtTA.value,
             }),
           })
-          // Sem reload; fica local
         } catch {
           alert("Não foi possível salvar a alteração deste log.")
         }
       })
 
-      // Aprovar (grava na TM) e remove da lista; depois atualiza TM sob demanda
       li.querySelector(".approve").addEventListener("click", async () => {
         try {
           await fetchJSON(`/api/logs/${row.id}/approve`, {
@@ -295,7 +357,6 @@ function renderPending(rows) {
         }
       })
 
-      // Reprovar — apenas remove localmente
       li.querySelector(".reject").addEventListener("click", async () => {
         try {
           await fetchJSON(`/api/logs/${row.id}/reject`, { method: "POST" })
@@ -305,7 +366,6 @@ function renderPending(rows) {
         }
       })
 
-      // Copiar para o editor principal
       li.querySelector(".copy").addEventListener("click", () => {
         sourceEl.value = srcTA.value
         targetEl.value = tgtTA.value
@@ -313,7 +373,6 @@ function renderPending(rows) {
 
       logPendingEl.appendChild(li)
     } else {
-      // Atualiza card existente (sem polling contínuo, só quando recarregamos pendentes)
       li.querySelector(".src").value = row.source_text || ""
       li.querySelector(".tgt").value = row.target_text || ""
       li.querySelector(".meta").textContent = `#${row.id} • ${
@@ -326,7 +385,6 @@ function renderPending(rows) {
 /* ============================================================
    APROVADOS (TM) — lê/edita/exclui direto; sem polling
    ============================================================ */
-
 function renderApprovedTM(rows = []) {
   const list = document.querySelector("#logApproved")
   if (!list) return
@@ -344,7 +402,6 @@ function renderApprovedTM(rows = []) {
         }[m])
     )
 
-  // Reconstrói a lista conforme a resposta (evento é raro, somente em ações)
   list.innerHTML = ""
   rows.forEach((row) => {
     const li = document.createElement("li")
@@ -355,15 +412,12 @@ function renderApprovedTM(rows = []) {
       <div class="meta">TM #${row.id} • uses:${
       row.uses ?? 0
     } • quality:${Number(row.quality ?? 0.9).toFixed(2)}</div>
-
       <label>Original (chave normalizada)</label>
       <textarea class="src" readonly>${esc(row.source_norm)}</textarea>
-
       <label>Tradução (editar e salvar)</label>
       <textarea class="tgt" spellcheck="false">${esc(
         row.target_text
       )}</textarea>
-
       <div class="actions">
         <button class="btn update">Salvar edição</button>
         <button class="btn del">Excluir da TM</button>
@@ -377,7 +431,6 @@ function renderApprovedTM(rows = []) {
     const btnDel = li.querySelector(".del")
     const btnCopy = li.querySelector(".copy")
 
-    // SALVAR EDIÇÃO NA TM (não recarrega toda a lista; atualiza só este card)
     btnSave.addEventListener("click", async () => {
       const target_text = (tgtTA.value || "").trim()
       if (!target_text) return alert("Tradução vazia.")
@@ -405,7 +458,6 @@ function renderApprovedTM(rows = []) {
       }
     })
 
-    // EXCLUIR DA TM (remove apenas este item)
     btnDel.addEventListener("click", async () => {
       if (!confirm("Remover esta tradução da memória (TM)?")) return
       btnDel.disabled = true
@@ -420,7 +472,6 @@ function renderApprovedTM(rows = []) {
       }
     })
 
-    // COPIAR PARA O EDITOR PRINCIPAL
     btnCopy.addEventListener("click", () => {
       sourceEl.value = li.querySelector(".src").value || row.source_norm || ""
       targetEl.value = tgtTA.value || row.target_text || ""
@@ -433,7 +484,6 @@ function renderApprovedTM(rows = []) {
 /* =======================
    Toolbar de edição (Unicode)
    ======================= */
-
 const locale = "pt-BR"
 function tokenizeUnicodePieces(s) {
   const re = /(\p{L}[\p{L}\p{M}]*(?:[’'\-]\p{L}[\p{L}\p{M}]*)*)/gu
@@ -474,7 +524,6 @@ function getCapOptions() {
   return { minLen, ignoreSet }
 }
 
-// Botões da toolbar
 const btnCopy = document.querySelector("#btnCopy")
 const btnUpper = document.querySelector("#btnUpper")
 const btnLower = document.querySelector("#btnLower")
@@ -495,7 +544,6 @@ btnCapWords?.addEventListener("click", () => {
   const { minLen, ignoreSet } = getCapOptions()
   const tokens = tokenizeUnicodePieces(targetEl.value)
   let isFirstWord = true
-
   for (const t of tokens) {
     if (t.type === "sep") {
       if (/[.!?]\s*$/.test(t.text)) isFirstWord = true
@@ -505,7 +553,6 @@ btnCapWords?.addEventListener("click", () => {
       isFirstWord = false
       continue
     }
-
     const parts = t.text.split(/([’'-])/u)
     for (let i = 0; i < parts.length; i += 2) {
       const chunk = parts[i]
@@ -529,9 +576,19 @@ btnCapSentence?.addEventListener("click", () => {
   targetEl.value = out
 })
 
-// ========= Inicialização (sem polling) =========
+// ========= Inicialização =========
 ;(async function init() {
-  await loadGloss() // uma vez ao carregar
-  await fetchPending() // carrega pendentes só agora
-  await fetchApprovedTM() // carrega aprovados só agora
+  await loadGloss()
+  await fetchPending()
+  await fetchApprovedTM()
 })()
+
+// Botão Exibir/Ocultar versão anterior
+const toggleOldBtn = document.getElementById("toggleOld")
+toggleOldBtn?.addEventListener("click", () => {
+  const preview = targetPreview
+  if (!preview) return
+  const showing = preview.style.display !== "none"
+  preview.style.display = showing ? "none" : "block"
+  toggleOldBtn.textContent = showing ? "Exibir" : "Ocultar"
+})
