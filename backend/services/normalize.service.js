@@ -1,0 +1,1 @@
+export function normalize(s){return (s||'').toLowerCase().replace(/\r?\n+/g,' ').replace(/\s+/g,' ').replace(/[“”]/g,'\"').replace(/[‘’]/g,"'").trim()}

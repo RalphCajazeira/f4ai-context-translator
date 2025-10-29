@@ -1,0 +1,5 @@
+{
+  "name":"f4ai-context-translator","version":"3.0.0","type":"module",
+  "scripts":{"dev":"node backend/server.js","init:db":"node backend/db-init.js","export:dataset":"node scripts/export-dataset.js"},
+  "dependencies":{"cors":"^2.8.5","dotenv":"^16.4.5","express":"^4.19.2","sqlite3":"^5.1.7","node-fetch":"^3.3.2"}
+}

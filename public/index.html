@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>F4 AI Context Translator</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>F4 AI Context Translator</h1>
+      <div class="langs">
+        <select id="src">
+          <option value="en" selected>Inglês</option>
+          <option value="pt">Português</option>
+          <option value="es">Espanhol</option>
+          <option value="fr">Francês</option>
+        </select>
+        <span>→</span>
+        <select id="tgt">
+          <option value="pt" selected>Português</option>
+          <option value="en">Inglês</option>
+          <option value="es">Espanhol</option>
+          <option value="fr">Francês</option>
+        </select>
+        <button id="swap">↔</button>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="panel">
+        <h3>Texto original</h3>
+        <textarea
+          id="source"
+          placeholder="Cole aqui o texto do mod..."
+        ></textarea>
+        <div class="actions">
+          <button id="btnTranslate">Traduzir</button>
+          <label class="keep-lines">
+            <input type="checkbox" id="preserveLines" checked />
+            Preservar quebras de linha
+          </label>
+          <button id="btnApprove" title="Salvar par fonte→alvo na memória">
+            Aprovar na Memória
+          </button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h3>Tradução</h3>
+        <textarea id="target" placeholder="Tradução (editável)"></textarea>
+
+        <!-- barra de ferramentas -->
+        <div class="toolbar">
+          <button title="Copiar texto" id="btnCopy">📋</button>
+          <button title="MAIÚSCULO" id="btnUpper">🅰</button>
+          <button title="minúsculo" id="btnLower">🔡</button>
+          <button title="Primeira letra de cada palavra" id="btnCapWords">
+            🅿
+          </button>
+          <button title="Primeira letra da frase" id="btnCapSentence">
+            📝
+          </button>
+        </div>
+
+        <div>
+          <h4>Alternativas</h4>
+          <ul id="alts"></ul>
+        </div>
+      </section>
+
+      <aside class="panel side">
+        <h3>Glossário (dicionário próprio)</h3>
+        <p>
+          Ex.: <b>Plot → Terreno</b>,
+          <b>Tutorial Message History → Histórico de Mensagens do Tutorial</b>
+        </p>
+        <form id="glossForm">
+          <input name="term_source" placeholder="termo EN" required />
+          <input name="term_target" placeholder="termo PT" required />
+          <button>Adicionar</button>
+        </form>
+        <div id="glossList" class="gloss-list"></div>
+      </aside>
+
+      <!-- NOVO: Log de Traduções -->
+      <section class="panel log">
+        <h3>Log de Traduções (ao vivo)</h3>
+        <ul id="logList"></ul>
+      </section>
+    </main>
+
+    <footer>
+      <small
+        >Backends: <b>Ollama LLM</b> (context-aware) • Fallback:
+        <b>M2M100</b></small
+      >
+    </footer>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

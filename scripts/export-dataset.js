@@ -1,0 +1,1 @@
+import fs from 'node:fs';import { all } from '../backend/db.js';const rows=await all('SELECT source_norm as source_text, target_text FROM tm_entries ORDER BY last_used_at DESC');fs.writeFileSync('data/dataset.jsonl',rows.map(r=>JSON.stringify(r)).join('\n'));console.log('✔ Exportado data/dataset.jsonl com',rows.length,'pares.')
