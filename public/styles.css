@@ -1,48 +1,123 @@
-:root{--bg:#0b0f14;--fg:#e6edf3;--muted:#93a1b1;--accent:#4fb}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,Segoe UI,Arial}
-header{display:flex;justify-content:space-between;align-items:center;padding:1rem;border-bottom:1px solid #222}
-.langs{display:flex;gap:.5rem;align-items:center}
-select,button,input,textarea{background:#111;color:var(--fg);border:1px solid #222;border-radius:8px;padding:.5rem .75rem}
-button{cursor:pointer}
-main.grid{display:grid;grid-template-columns:1fr 1fr 360px;gap:1rem;padding:1rem}
-.panel{background:#0d131a;border:1px solid #1a1f27;border-radius:12px;padding:1rem;display:flex;flex-direction:column;gap:.5rem;min-height:60vh}
-.panel h3{margin:.25rem 0}
-.panel.side{min-height:auto}
-textarea{width:100%;min-height:220px;resize:vertical}
-.actions{display:flex;gap:.5rem}
-#alts{list-style:none;padding:0;margin:.5rem 0 0}
-#alts li{border:1px solid #222;border-radius:8px;padding:.5rem;margin:.5rem 0;cursor:pointer}
-#alts li small{opacity:.7}
-.gloss-list{margin-top:.5rem;max-height:240px;overflow:auto;border-top:1px solid #222;padding-top:.5rem}
-.gloss-list div{padding:.25rem 0;border-bottom:1px dashed #222}
-footer{border-top:1px solid #222;padding:.75rem 1rem;opacity:.8}
+:root {
+  --bg: #0b0f14;
+  --fg: #e6edf3;
+  --muted: #93a1b1;
+  --accent: #4fb;
+}
 
-/* === NOVO: painel de log de traduções === */
-.panel.log{
-  grid-column: span 3;
-  max-height: 300px;
-  overflow-y: auto;
-}
-#logList{
-  list-style: none;
+* { box-sizing: border-box; }
+
+body {
   margin: 0;
-  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, Segoe UI, Arial;
 }
-#logList li{
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  border-bottom: 1px solid #222;
+}
+
+.langs {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+select,
+button,
+input,
+textarea {
+  background: #111;
+  color: var(--fg);
   border: 1px solid #222;
   border-radius: 8px;
-  padding: 0.5rem;
-  margin: 0.4rem 0;
+  padding: 0.5rem 0.75rem;
+}
+
+button { cursor: pointer; }
+
+main.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 360px;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.panel {
+  background: #0d131a;
+  border: 1px solid #1a1f27;
+  border-radius: 12px;
+  padding: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.5rem;
+  min-height: 60vh;
 }
-#logList li .actions{
+
+.panel h3 { margin: 0.25rem 0; }
+
+.panel.side { min-height: auto; }
+
+textarea {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+}
+
+.actions {
   display: flex;
   gap: 0.5rem;
 }
 
+.actions .keep-lines {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+#alts {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+}
+
+#alts li {
+  border: 1px solid #222;
+  border-radius: 8px;
+  padding: 0.5rem;
+  margin: 0.5rem 0;
+  cursor: pointer;
+}
+
+#alts li small { opacity: 0.7; }
+
+.gloss-list {
+  margin-top: 0.5rem;
+  max-height: 240px;
+  overflow: auto;
+  border-top: 1px solid #222;
+  padding-top: 0.5rem;
+}
+
+.gloss-list div {
+  padding: 0.25rem 0;
+  border-bottom: 1px dashed #222;
+}
+
+footer {
+  border-top: 1px solid #222;
+  padding: 0.75rem 1rem;
+  opacity: 0.8;
+}
+
+/* === Toolbar de edição no editor de tradução === */
 .toolbar {
   display: flex;
   gap: 0.4rem;
@@ -56,19 +131,79 @@ footer{border-top:1px solid #222;padding:.75rem 1rem;opacity:.8}
   background: #182028;
   border: 1px solid #333;
   border-radius: 6px;
-  cursor: pointer;
   color: #e6edf3;
   transition: background 0.2s;
 }
 
-.toolbar button:hover {
-  background: #263140;
+.toolbar button:hover { background: #263140; }
+
+/* === Layout de duas colunas para os logs === */
+.logs-row {
+  grid-column: span 3;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
 }
 
-.actions .keep-lines {
-  display: inline-flex;
-  align-items: center;
-  gap: .4rem;
-  font-size: .9rem;
-  opacity: .9;
+/* Painéis de log (pendentes e aprovados) */
+.panel.log {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+#logPending,
+#logApproved {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.log-item {
+  border: 1px solid #222;
+  border-radius: 8px;
+  padding: 0.6rem;
+  margin: 0.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.log-item .meta {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+.log-item textarea {
+  width: 100%;
+  min-height: 90px;
+  resize: vertical;
+}
+
+.log-item .actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Botões compactos reutilizáveis */
+.btn {
+  background: #182028;
+  border: 1px solid #333;
+  color: #e6edf3;
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn:hover { background: #263140; }
+
+/* (Opcional) Responsivo simples para telas menores */
+@media (max-width: 1100px) {
+  main.grid {
+    grid-template-columns: 1fr;
+  }
+  .logs-row {
+    grid-template-columns: 1fr;
+  }
+  .panel { min-height: auto; }
 }

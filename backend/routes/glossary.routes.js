@@ -1,1 +1,19 @@
-import { Router } from 'express';import { all, run } from '../db.js';export const glossaryRouter=Router();glossaryRouter.get('/',async(req,res)=>{const rows=await all('SELECT * FROM glossary ORDER BY term_source ASC');res.json(rows)});glossaryRouter.post('/',async(req,res)=>{const {term_source,term_target,notes,approved=1}=req.body||{};if(!term_source||!term_target)return res.status(400).json({error:'term_source e term_target são obrigatórios'});const info=await run('INSERT INTO glossary (term_source, term_target, notes, approved) VALUES (?, ?, ?, ?)',[term_source,term_target,notes||null,approved?1:0]);res.json({id:info.lastID})})
+import { Router } from "express"
+import { all, run } from "../db.js"
+export const glossaryRouter = Router()
+glossaryRouter.get("/", async (req, res) => {
+  const rows = await all("SELECT * FROM glossary ORDER BY term_source ASC")
+  res.json(rows)
+})
+glossaryRouter.post("/", async (req, res) => {
+  const { term_source, term_target, notes, approved = 1 } = req.body || {}
+  if (!term_source || !term_target)
+    return res
+      .status(400)
+      .json({ error: "term_source e term_target são obrigatórios" })
+  const info = await run(
+    "INSERT INTO glossary (term_source, term_target, notes, approved) VALUES (?, ?, ?, ?)",
+    [term_source, term_target, notes || null, approved ? 1 : 0]
+  )
+  res.json({ id: info.lastID })
+})

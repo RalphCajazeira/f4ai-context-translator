@@ -28,7 +28,9 @@ CREATE TABLE IF NOT EXISTS segments (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_tm_source_norm ON tm_entries(source_norm);
+CREATE UNIQUE INDEX IF NOT EXISTS tm_entries_source_norm_uq
+  ON tm_entries(source_norm);
+
 
 -- NOVO: logs de traduções (para hotkey e UI)
 CREATE TABLE IF NOT EXISTS translation_logs (

@@ -83,10 +83,17 @@
         <div id="glossList" class="gloss-list"></div>
       </aside>
 
-      <!-- NOVO: Log de Traduções -->
-      <section class="panel log">
-        <h3>Log de Traduções (ao vivo)</h3>
-        <ul id="logList"></ul>
+      <!-- LINHA DE LOGS: Pendentes (esquerda) | Aprovados (direita/ TM) -->
+      <section class="logs-row">
+        <section class="panel log">
+          <h3>Log de Traduções — Pendentes</h3>
+          <ul id="logPending"></ul>
+        </section>
+
+        <section class="panel log">
+          <h3>Log de Traduções — Aprovados (Memória)</h3>
+          <ul id="logApproved"></ul>
+        </section>
       </section>
     </main>
 
