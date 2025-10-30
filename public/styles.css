@@ -191,35 +191,22 @@ footer {
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* Loading */
-button[disabled] {
-  opacity: 0.6;
-  cursor: progress;
-}
-textarea.busy {
-  background-image: linear-gradient(
-    45deg,
-    rgba(255, 255, 255, 0.05) 25%,
-    transparent 25%,
-    transparent 50%,
-    rgba(255, 255, 255, 0.05) 50%,
-    rgba(255, 255, 255, 0.05) 75%,
-    transparent 75%,
-    transparent
-  );
-  background-size: 24px 24px;
-  animation: stripes 1s linear infinite;
-}
-@keyframes stripes {
-  from {
-    background-position: 0 0;
-  }
-  to {
-    background-position: 24px 0;
-  }
+/* Editor único */
+.editor {
+  border: 1px solid #222;
+  border-radius: 8px;
+  padding: 0.75rem;
+  min-height: 220px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1.5;
+  background: #111;
+  outline: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow: auto;
 }
 
-/* Versão anterior (onde o removido fica vermelho) */
+/* Versão anterior: removidos em vermelho */
 .preview-wrap {
   margin-top: 0.75rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -247,29 +234,7 @@ textarea.busy {
   font-weight: 600;
 }
 
-/* ===== Editor rico para colorir o texto sendo editado ===== */
-.target-wrap {
-  position: relative;
-}
-.rich {
-  position: relative;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  border: 1px solid #222;
-  border-radius: 8px;
-  padding: 0.75rem;
-  min-height: 220px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  line-height: 1.5;
-  background: #111;
-  outline: none;
-  overflow: auto;
-}
-.rich.hidden {
-  display: none;
-}
-
-/* Destaques (igual ao estilo do “DESATIVADO”) */
+/* Destaques no editor (igual “DESATIVADO”) */
 .diff-add {
   color: #34d399;
   font-weight: 600;

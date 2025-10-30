@@ -1,11 +1,10 @@
-// ====== elementos ======
+// ===== elementos =====
 const srcSel = document.querySelector("#src")
 const tgtSel = document.querySelector("#tgt")
 const swapBtn = document.querySelector("#swap")
 
 const sourceEl = document.querySelector("#source")
-const targetTA = document.querySelector("#target") // textarea “origem de verdade”
-const targetRich = document.querySelector("#targetRich") // editor colorido
+const editor = document.querySelector("#editor") // ÚNICA caixa de edição
 
 const targetPreview = document.querySelector("#targetPreview")
 const toggleOldBtn = document.getElementById("toggleOld")
@@ -13,18 +12,17 @@ const toggleOldBtn = document.getElementById("toggleOld")
 const btnTranslate = document.querySelector("#btnTranslate")
 const btnPasteTranslate = document.querySelector("#btnPasteTranslate")
 const btnApprove = document.querySelector("#btnApprove")
-
 const preserveLinesChk = document.querySelector("#preserveLines")
 
 const compareBtn = document.querySelector("#btnCompare")
 let compareActive = false
-let compareBaseline = "" // versão anterior fixa para comparar
+let compareBaseline = "" // versão anterior fixa
 
 const altsEl = document.querySelector("#alts")
 const logPendingEl = document.querySelector("#logPending")
 const logApprovedEl = document.querySelector("#logApproved")
 
-// ===== helpers =====
+const locale = "pt-BR"
 const esc = (s) =>
   String(s ?? "").replace(
     /[&<>"']/g,
@@ -34,23 +32,64 @@ const esc = (s) =>
       ])
   )
 
-const locale = "pt-BR"
+// ===== helpers: caret em contenteditable =====
+function getCaretIndex(root) {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return 0
+  const range = sel.getRangeAt(0)
+  let idx = 0
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null)
+  while (walker.nextNode()) {
+    const n = walker.currentNode
+    if (n === range.startContainer) return idx + range.startOffset
+    idx += n.textContent.length
+  }
+  return idx
+}
+function setCaretIndex(root, index) {
+  index = Math.max(0, Math.min(index, root.textContent.length))
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null)
+  let node = null,
+    offset = 0,
+    acc = 0
+  while (walker.nextNode()) {
+    const t = walker.currentNode
+    if (acc + t.textContent.length >= index) {
+      node = t
+      offset = index - acc
+      break
+    }
+    acc += t.textContent.length
+  }
+  if (!node) {
+    node = root
+    offset = root.childNodes.length
+  }
+  const sel = window.getSelection(),
+    r = document.createRange()
+  try {
+    r.setStart(node, offset)
+    r.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(r)
+  } catch (_) {}
+}
 
-// ====================== UI geral ======================
+// ===== linguagem =====
 swapBtn?.addEventListener("click", () => {
   const s = srcSel.value
   srcSel.value = tgtSel.value
   tgtSel.value = s
 })
 
-// Mostrar/ocultar “Versão anterior”
+// ===== versão anterior vis/oculta =====
 toggleOldBtn?.addEventListener("click", () => {
   const showing = targetPreview.style.display !== "none"
   targetPreview.style.display = showing ? "none" : "block"
   toggleOldBtn.textContent = showing ? "Exibir" : "Ocultar"
 })
 
-// ==================== TRADUÇÃO ====================
+// ===================== TRADUÇÃO =====================
 btnTranslate?.addEventListener("click", () =>
   doTranslate({ log: true, refreshAfter: "pending" })
 )
@@ -73,7 +112,7 @@ function setTranslating(on) {
       btnPasteTranslate.textContent = "Traduzindo..."
       btnPasteTranslate.disabled = true
     }
-    targetTA.classList.add("busy")
+    editor.dataset.busy = "1"
   } else {
     btnTranslate.textContent = btnTranslate.dataset.label
     btnTranslate.disabled = false
@@ -81,7 +120,7 @@ function setTranslating(on) {
       btnPasteTranslate.textContent = btnPasteTranslate.dataset.label
       btnPasteTranslate.disabled = false
     }
-    targetTA.classList.remove("busy")
+    delete editor.dataset.busy
   }
 }
 
@@ -97,8 +136,8 @@ async function doTranslate({ log = true, refreshAfter = null } = {}) {
     origin: "ui",
   }
 
-  // guarda versão anterior
-  const previous = getCurrentEditorText()
+  // guarda “versão anterior”
+  const previous = editor.textContent
   targetPreview.textContent = previous || ""
 
   setTranslating(true)
@@ -108,23 +147,17 @@ async function doTranslate({ log = true, refreshAfter = null } = {}) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     })
-    if (!r.ok) {
-      throw new Error(`HTTP ${r.status}`)
-    }
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
     const j = await r.json()
     const newText = j.best || ""
 
-    // atualiza editor base
-    setEditorText(newText)
-
     if (compareActive) {
       compareBaseline = previous || ""
-      // força exibição da versão anterior
       targetPreview.style.display = "block"
       toggleOldBtn.textContent = "Ocultar"
-      renderDiff(compareBaseline, newText) // pinta no editor rico e no preview
+      renderDiff(compareBaseline, newText)
     } else {
-      hideRichMode()
+      setPlainText(newText) // sem cores
     }
 
     renderAlts(j.candidates || [])
@@ -134,98 +167,27 @@ async function doTranslate({ log = true, refreshAfter = null } = {}) {
   }
 }
 
-// ============ EDITOR: alternância & sincronização ============
-function useRichMode() {
-  // mostra contenteditable, esconde textarea
-  targetTA.classList.add("hidden")
-  targetRich.classList.remove("hidden")
-  // mantém o mesmo texto
-  targetRich.textContent = targetTA.value
-}
-function hideRichMode() {
-  targetRich.classList.add("hidden")
-  targetTA.classList.remove("hidden")
+// ====== renderização no editor ======
+function setPlainText(text) {
+  const caret = getCaretIndex(editor)
+  editor.textContent = text
+  setCaretIndex(editor, Math.min(caret, editor.textContent.length))
 }
 
-function getCurrentEditorText() {
-  return compareActive ? targetRich.textContent : targetTA.value
-}
-function setEditorText(text) {
-  if (compareActive) {
-    targetRich.textContent = text
-    targetTA.value = text // manter sincronizado
-  } else {
-    targetTA.value = text
-  }
-}
-
-// ============ DIFF colorido direto no editor ============
-function tokenizeByWordBoundaries(txt) {
-  return txt.split(/\b/) // mantém separadores para reconstruir layout
-}
-
-// cursor em contenteditable (índice em caracteres, contando apenas nós de texto)
-function getCaretIndex(root) {
-  const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0) return 0
-  const range = sel.getRangeAt(0)
-  let idx = 0
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null)
-  while (walker.nextNode()) {
-    const node = walker.currentNode
-    if (node === range.startContainer) {
-      return idx + range.startOffset
-    }
-    idx += node.textContent.length
-  }
-  return idx
-}
-
-function setCaretIndex(root, index) {
-  index = Math.max(0, Math.min(index, root.textContent.length))
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null)
-  let node = null,
-    offset = 0,
-    acc = 0
-  while (walker.nextNode()) {
-    const t = walker.currentNode
-    if (acc + t.textContent.length >= index) {
-      node = t
-      offset = index - acc
-      break
-    }
-    acc += t.textContent.length
-  }
-  if (!node) {
-    node = root
-    offset = root.childNodes.length
-  }
-  const sel = window.getSelection()
-  const range = document.createRange()
-  try {
-    range.setStart(node, offset)
-    range.collapse(true)
-    sel.removeAllRanges()
-    sel.addRange(range)
-  } catch (_) {}
-}
+// quebra por limites de palavra, preservando separadores
+const tokenize = (s) => s.split(/\b/)
 
 function renderDiff(oldText, newText) {
-  // tokens
-  const oldT = tokenizeByWordBoundaries(oldText)
-  const newT = tokenizeByWordBoundaries(newText)
+  const oldT = tokenize(oldText)
+  const newT = tokenize(newText)
   const len = Math.max(oldT.length, newT.length)
 
-  // “Versão anterior” (vermelho p/ removidos)
   const prevOut = []
-
-  // Editor rico (verde p/ novos/modificados)
   const richOut = []
 
   for (let i = 0; i < len; i++) {
     const a = oldT[i] || ""
     const b = newT[i] || ""
-
     if (a === b) {
       richOut.push(esc(b))
       prevOut.push(esc(a))
@@ -242,24 +204,16 @@ function renderDiff(oldText, newText) {
     }
   }
 
-  // mantém posição do cursor
-  const caretBefore = getCaretIndex(targetRich)
-  targetRich.innerHTML = richOut.join("")
-  setCaretIndex(
-    targetRich,
-    Math.min(caretBefore, targetRich.textContent.length)
-  )
+  const caret = getCaretIndex(editor)
+  editor.innerHTML = richOut.join("")
+  setCaretIndex(editor, Math.min(caret, editor.textContent.length))
 
   targetPreview.innerHTML = prevOut.join("")
-  // sincroniza o valor “oficial” no textarea
-  targetTA.value = targetRich.textContent
 }
 
-// entrada do usuário quando o modo rico está ativo
-targetRich.addEventListener("input", () => {
-  if (!compareActive) return
-  const current = targetRich.textContent
-  renderDiff(compareBaseline, current)
+// Atualiza diff em tempo real quando comparando
+editor.addEventListener("input", () => {
+  if (compareActive) renderDiff(compareBaseline, editor.textContent)
 })
 
 // ================= Toggle Comparar =================
@@ -271,19 +225,18 @@ compareBtn?.addEventListener("click", () => {
     : "🔍 Comparar: OFF"
 
   if (compareActive) {
-    compareBaseline = (targetPreview?.textContent ?? "") || targetTA.value || ""
-    useRichMode()
+    compareBaseline =
+      (targetPreview?.textContent ?? "") || editor.textContent || ""
     targetPreview.style.display = "block"
     toggleOldBtn.textContent = "Ocultar"
-    renderDiff(compareBaseline, targetRich.textContent)
+    renderDiff(compareBaseline, editor.textContent)
   } else {
-    hideRichMode()
-    // ao sair, garante que o textarea tenha o texto editado
-    targetTA.value = targetTA.value || targetRich.textContent
+    // remover cores: manter apenas texto
+    setPlainText(editor.textContent)
   }
 })
 
-// =================== Alternativas, logs e TM ===================
+// ================= Alternativas / Logs / TM =================
 function renderAlts(items) {
   const list = document.querySelector("#alts")
   list.innerHTML = ""
@@ -293,8 +246,8 @@ function renderAlts(items) {
       it.score ? "• " + ((it.score * 100) | 0) + "%" : ""
     }</small>`
     li.addEventListener("click", () => {
-      setEditorText(it.text)
       if (compareActive) renderDiff(compareBaseline, it.text)
+      else setPlainText(it.text)
     })
     list.appendChild(li)
   })
@@ -305,7 +258,6 @@ async function fetchJSON(url, opts) {
   if (!r.ok) throw new Error(`HTTP ${r.status}`)
   return r.json()
 }
-
 async function fetchPending() {
   try {
     renderPending(await fetchJSON("/api/logs?status=pending&limit=200"))
@@ -380,8 +332,8 @@ function renderPending(rows) {
       })
       li.querySelector(".copy").addEventListener("click", () => {
         sourceEl.value = srcTA.value
-        setEditorText(tgtTA.value)
         if (compareActive) renderDiff(compareBaseline, tgtTA.value)
+        else setPlainText(tgtTA.value)
       })
       logPendingEl.appendChild(li)
     } else {
@@ -434,14 +386,15 @@ function renderApprovedTM(rows = []) {
     })
     li.querySelector(".copy").addEventListener("click", () => {
       sourceEl.value = li.querySelector(".src").value || row.source_norm || ""
-      setEditorText(tgtTA.value || row.target_text || "")
-      if (compareActive) renderDiff(compareBaseline, getCurrentEditorText())
+      if (compareActive)
+        renderDiff(compareBaseline, tgtTA.value || row.target_text || "")
+      else setPlainText(tgtTA.value || row.target_text || "")
     })
     logApprovedEl.appendChild(li)
   })
 }
 
-// =================== Toolbar (copiar/case) ===================
+// =================== Toolbar (copiar/case/cap) ===================
 const btnCopy = document.querySelector("#btnCopy")
 const btnUpper = document.querySelector("#btnUpper")
 const btnLower = document.querySelector("#btnLower")
@@ -449,19 +402,15 @@ const btnCapWords = document.querySelector("#btnCapWords")
 const btnCapSentence = document.querySelector("#btnCapSentence")
 
 btnCopy?.addEventListener("click", () => {
-  navigator.clipboard.writeText(getCurrentEditorText())
+  navigator.clipboard.writeText(editor.textContent)
   alert("Texto copiado!")
 })
-btnUpper?.addEventListener("click", () => {
-  const t = getCurrentEditorText().toLocaleUpperCase(locale)
-  setEditorText(t)
-  if (compareActive) renderDiff(compareBaseline, t)
-})
-btnLower?.addEventListener("click", () => {
-  const t = getCurrentEditorText().toLocaleLowerCase(locale)
-  setEditorText(t)
-  if (compareActive) renderDiff(compareBaseline, t)
-})
+btnUpper?.addEventListener("click", () =>
+  applyTransform((t) => t.toLocaleUpperCase(locale))
+)
+btnLower?.addEventListener("click", () =>
+  applyTransform((t) => t.toLocaleLowerCase(locale))
+)
 btnCapWords?.addEventListener("click", () => {
   const minLen = Math.max(
     0,
@@ -476,7 +425,7 @@ btnCapWords?.addEventListener("click", () => {
       .map((s) => s.trim().toLocaleLowerCase(locale))
       .filter(Boolean)
   )
-  const s = getCurrentEditorText()
+  const s = editor.textContent
   const tokens = s.split(/(\p{L}[\p{L}\p{M}]*(?:[’'\-]\p{L}[\p{L}\p{M}]*)*)/gu)
   let first = true
   for (let i = 1; i < tokens.length; i += 2) {
@@ -487,25 +436,28 @@ btnCapWords?.addEventListener("click", () => {
     } else tokens[i] = base
     first = false
   }
-  const out = tokens.join("")
-  setEditorText(out)
-  if (compareActive) renderDiff(compareBaseline, out)
+  applyTransform(() => tokens.join(""))
 })
 btnCapSentence?.addEventListener("click", () => {
-  const out = getCurrentEditorText()
-    .toLocaleLowerCase(locale)
-    .replace(/(^\s*\p{L}|[.!?]\s*\p{L})/gu, (m) => {
+  applyTransform((t) =>
+    t.toLocaleLowerCase(locale).replace(/(^\s*\p{L}|[.!?]\s*\p{L})/gu, (m) => {
       const a = Array.from(m)
       return a[0].toLocaleUpperCase(locale) + a.slice(1).join("")
     })
-  setEditorText(out)
-  if (compareActive) renderDiff(compareBaseline, out)
+  )
 })
+
+function applyTransform(fn) {
+  const plain = editor.textContent
+  const out = typeof fn === "function" ? fn(plain) : String(fn || "")
+  if (compareActive) renderDiff(compareBaseline, out)
+  else setPlainText(out)
+}
 
 // =================== Aprovar par atual ===================
 btnApprove?.addEventListener("click", async () => {
   const src = sourceEl.value.trim()
-  const tgt = getCurrentEditorText().trim()
+  const tgt = editor.textContent.trim()
   if (!src || !tgt) return alert("Forneça texto original e tradução.")
   const r = await fetch("/api/translate/approve", {
     method: "POST",

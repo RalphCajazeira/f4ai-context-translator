@@ -60,19 +60,14 @@
       <section class="panel">
         <h3>Tradução</h3>
 
-        <!-- Wrapper do editor: alterna entre textarea e contenteditable -->
-        <div class="target-wrap">
-          <!-- textarea “de verdade” (para copiar, salvar etc.) -->
-          <textarea id="target" spellcheck="false"></textarea>
-          <!-- editor rico visível quando Comparar: ON -->
-          <div
-            id="targetRich"
-            class="rich hidden"
-            contenteditable="true"
-            spellcheck="false"
-            aria-label="Tradução (edição com destaque de diferenças)"
-          ></div>
-        </div>
+        <!-- ÚNICA CAIXA DE EDIÇÃO -->
+        <div
+          id="editor"
+          class="editor"
+          contenteditable="true"
+          spellcheck="false"
+          aria-label="Tradução (editor)"
+        ></div>
 
         <div class="preview-wrap">
           <div class="preview-title">
@@ -92,7 +87,7 @@
           <button title="Primeira letra da frase" id="btnCapSentence">
             📝
           </button>
-          <!-- NOVO: toggle de comparação -->
+          <!-- Toggle de comparação -->
           <button
             title="Comparar alterações (liga/desliga)"
             id="btnCompare"
