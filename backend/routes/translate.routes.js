@@ -5,7 +5,6 @@ import {
   recordApproval,
   getGlossary,
 } from "../services/suggest.service.js"
-import { translateWithContext } from "../services/mt-client.service.js"
 import { run, all } from "../db.js"
 import {
   projectGlossaryCaseInSentence,
@@ -13,6 +12,10 @@ import {
   extractAllCapsTerms,
   replaceWordUnicode,
 } from "../services/case.service.js"
+import {
+  translateWithContext,
+  forceTranslateWithOllama,
+} from "../services/mt-client.service.js"
 
 export const translateRouter = Router()
 
@@ -53,52 +56,64 @@ function tokenCosine(a, b) {
 function adaptToggleOnOff(fromSourceNorm, fromTarget, toOriginal) {
   if (!fromSourceNorm || !fromTarget || !toOriginal) return null
 
-  const srcOld = String(fromSourceNorm)
   let out = String(fromTarget)
   const srcNew = String(toOriginal)
 
-  const PT_ON = "ATIVADO"
-  const PT_OFF = "DESATIVADO"
+  const PT_ON = "LIGADO"
+  const PT_OFF = "DESLIGADO"
 
-  // -------- 1) TÍTULO ": ON|OFF" → ": ATIVADO|DESATIVADO" --------
-  // pega o status só do título no NOVO texto
+  // --- 0) Normalize qualquer variação anterior p/ nosso padrão ---
+  out = out.replace(/\bATIVADO\b/gi, PT_ON).replace(/\bDESATIVADO\b/gi, PT_OFF)
+
+  // --- 1) TÍTULO ": ON|OFF" → ": LIGADO|DESLIGADO" ---
   const headerNew = srcNew.match(/:\s*(ON|OFF)\b/i)?.[1]?.toUpperCase()
   if (headerNew) {
     const desired = headerNew === "ON" ? PT_ON : PT_OFF
-    // troca apenas o título no alvo
-    out = out.replace(/(:\s*)(ATIVADO|DESATIVADO)\b/iu, `$1${desired}`)
+    // aceita as quatro formas no alvo, mas força nosso padrão
+    out = out.replace(
+      /(:\s*)(LIGADO|DESLIGADO|ATIVADO|DESATIVADO)\b/iu,
+      `$1${desired}`
+    )
   }
 
-  // -------- 2) FRASES "When ON|OFF" → "Quando ATIVADO|DESATIVADO" --------
-  // vamos mapear ocorrência-a-ocorrência para não confundir casos mistos
+  // --- 2) "When ON|OFF" → "Quando LIGADO|DESLIGADO" (ocorrência a ocorrência) ---
   const whenMatches = [...srcNew.matchAll(/\bWhen\s+(ON|OFF)\b/gi)]
   if (whenMatches.length > 0) {
-    // para cada ocorrência no source, force a mesma contagem no target
     let idx = 0
-    out = out.replace(/\b(Quando)\s+(ATIVADO|DESATIVADO)\b/gi, (m, q, cur) => {
-      const mSrc = whenMatches[idx++]
-      if (!mSrc) return m // se tiver mais "Quando" do que "When", mantém
-      const desired = mSrc[1].toUpperCase() === "ON" ? PT_ON : PT_OFF
-      return `${q} ${desired}`
-    })
+    out = out.replace(
+      /\b(Quando)\s+(LIGADO|DESLIGADO|ATIVADO|DESATIVADO)\b/gi,
+      (m, q) => {
+        const mSrc = whenMatches[idx++]
+        if (!mSrc) return m
+        const desired = mSrc[1].toUpperCase() === "ON" ? PT_ON : PT_OFF
+        return `${q} ${desired}`
+      }
+    )
 
-    // fallback: se o source tem "When ON" mas o target não tem nenhum "Quando …",
-    // tente forçar pelo menos uma troca (caso raro em textos curtos)
+    // fallback: se o source tem "When ..." e o alvo não tinha "Quando ...", injeta 1 vez
     const needOn = whenMatches.some((m) => m[1].toUpperCase() === "ON")
     const needOff = whenMatches.some((m) => m[1].toUpperCase() === "OFF")
-    if (!/\bQuando\s+(ATIVADO|DESATIVADO)\b/i.test(out)) {
+    if (!/\bQuando\s+(LIGADO|DESLIGADO)\b/i.test(out)) {
       if (needOn) out = out.replace(/\bQuando\b/i, `Quando ${PT_ON}`)
-      else if (needOff) out = out.replace(/\bQuando\b/i, `Quando ${PT_OFF}`)
+      if (needOff) out = out.replace(/\bQuando\b/i, `Quando ${PT_OFF}`)
     }
   }
+
+  // --- 3) Deduplicação (caso glossário/LLM tenha encaixado sinônimos) ---
+  out = out
+    .replace(/\b(LIGADO)\s+(ATIVADO|LIGADO)\b/gi, PT_ON)
+    .replace(/\b(DESLIGADO)\s+(DESATIVADO|DESLIGADO)\b/gi, PT_OFF)
 
   return out
 }
 
-/** Tradução linha a linha com limpeza anti-eco do LLM */
+/** Tradução linha a linha com limpeza anti-eco do LLM (segura) */
 async function translatePreservingLines({ text, src, tgt, shots, glossary }) {
-  const lines = String(text || "").split(/\r?\n/)
+  const raw = String(text ?? "")
+  const endsWithNL = /\r?\n$/.test(raw)
+  const lines = raw.split(/\r\n|\n/) // preserva CRLF e linhas vazias
   const out = []
+
   for (const ln of lines) {
     if (ln.trim() === "") {
       out.push("")
@@ -114,21 +129,49 @@ async function translatePreservingLines({ text, src, tgt, shots, glossary }) {
         shots,
         glossary,
       })
-      const clean = String(translated || "")
-        // remove instruções ecoadas, com ou sem quebra de linha
+
+      let clean = String(translated || "")
+        // remove instruções ecoadas
         .replace(/^\s*(?:traduza\s+apenas[^\n:]*:\s*)/i, "")
-        // se ainda houver prefixo com quebra, corta até a 1ª \n
-        .replace(/^.*?\n/, "")
-        .trim()
+        // remove prefixos comuns de rótulo
+        .replace(/^\s*(?:pt-?br|portugu[eê]s)\s*:\s*/i, "")
+        .replace(
+          /^(?:en|english)\s*:\s*[^\n]*\n\s*(?:pt-?br|portugu[eê]s)\s*:\s*/i,
+          ""
+        )
+        // desembrulha fenced code blocks, se vierem
+        .replace(/^```[\w-]*\s*\n?([\s\S]*?)\n?```$/i, "$1")
+        // nunca usar .trim() (pra não comer linha vazia); só final
+        .trimEnd()
+
+      // anti-eco: se igual ao original, força fallback direto no Ollama
+      if (norm(clean) === norm(ln)) {
+        try {
+          const forced = await forceTranslateWithOllama(ln, src, tgt)
+          if (norm(forced) !== norm(ln)) clean = forced
+        } catch {
+          /* mantém clean como está */
+        }
+      }
+
       out.push(clean)
     } catch {
-      out.push(ln) // fallback: não trava a página
+      // erro no microserviço → tenta fallback duro no Ollama antes de devolver original
+      try {
+        const forced = await forceTranslateWithOllama(ln, src, tgt)
+        out.push(forced || ln)
+      } catch {
+        out.push(ln)
+      }
     }
   }
-  return out.join("\n")
+
+  let joined = out.join("\n")
+  if (endsWithNL) joined += "\n"
+  return joined
 }
 
-/** Reforça termos ALL-CAPS traduzindo isoladamente (com anti-eco) */
+/** Reforça termos ALL-CAPS traduzindo isoladamente (com anti-eco seguro) */
 async function enforceAllCapsTerms({
   original,
   best,
@@ -155,8 +198,13 @@ async function enforceAllCapsTerms({
       })
       t = String(t || "")
         .replace(/^\s*(?:traduza\s+apenas[^\n:]*:\s*)/i, "")
-        .replace(/^.*?\n/, "")
-        .trim()
+        .replace(/^\s*(?:pt-?br|portugu[eê]s)\s*:\s*/i, "")
+        .replace(
+          /^(?:en|english)\s*:\s*[^\n]*\n\s*(?:pt-?br|portugu[eê]s)\s*:\s*/i,
+          ""
+        )
+        .replace(/^```[\w-]*\s*\n?([\s\S]*?)\n?```$/i, "$1")
+        .trimEnd()
     } catch {
       t = ""
     }
@@ -193,8 +241,8 @@ translateRouter.post("/", async (req, res) => {
     const srcNorm = norm(text)
     let best = ""
 
-    const FUZZY_PROMOTE_MIN = Number(process.env.TM_FUZZY_PROMOTE_MIN ?? 0.92) // padrão 0.92
-    const MAX_LEN_DELTA = Number(process.env.TM_FUZZY_MAX_LEN_DELTA ?? 0.1) // 10%
+    const FUZZY_PROMOTE_MIN = Number(process.env.TM_FUZZY_PROMOTE_MIN ?? 0.92)
+    const MAX_LEN_DELTA = Number(process.env.TM_FUZZY_MAX_LEN_DELTA ?? 0.1)
     const REQUIRE_PATCH =
       String(process.env.TM_FUZZY_REQUIRE_PATCH ?? "true").toLowerCase() ===
       "true"
@@ -204,7 +252,7 @@ translateRouter.post("/", async (req, res) => {
     if (tmExact) {
       best = applyCaseLike(text, tmExact.target_text)
     } else {
-      // 1b) Fuzzy (hard mode): precisa de PLENAS evidências de que é “quase o mesmo”
+      // 1b) Fuzzy (hard mode)
       let top = null
       for (const p of tmPairs || []) {
         const sc = tokenCosine(srcNorm, p.source_norm || "")
@@ -218,14 +266,9 @@ translateRouter.post("/", async (req, res) => {
           Math.abs(lenA - lenB) / Math.max(1, Math.max(lenA, lenB)) <=
           MAX_LEN_DELTA
 
-        // tente aplicar patches controlados (ex.: ON/OFF)
         const patched = adaptToggleOnOff(top.source_norm, top.target_text, text)
         const changed = patched && patched !== top.target_text
 
-        // critérios para aceitar fuzzy:
-        //  - confiança alta (>= FUZZY_PROMOTE_MIN)
-        //  - estruturas com tamanho semelhante
-        //  - se REQUIRE_PATCH=true, só aceita quando houve patch (evita “copiar” textos antigos)
         if (
           top.sc >= FUZZY_PROMOTE_MIN &&
           lenOk &&
@@ -237,10 +280,17 @@ translateRouter.post("/", async (req, res) => {
     }
 
     // 1c) Se ainda não tem best, chama MT/LLM
+    const isSingleLine = !/\r?\n/.test(text)
+    const words = String(text).trim().split(/\s+/).filter(Boolean)
+    const isVeryShort = text.length <= 32 || words.length <= 4
+
     if (!best) {
-      best = preserveLines
-        ? await translatePreservingLines({ text, src, tgt, shots, glossary })
-        : await translateWithContext({ text, src, tgt, shots, glossary })
+      best =
+        isSingleLine && isVeryShort
+          ? await translateWithContext({ text, src, tgt, shots, glossary })
+          : preserveLines
+          ? await translatePreservingLines({ text, src, tgt, shots, glossary })
+          : await translateWithContext({ text, src, tgt, shots, glossary })
     }
 
     /* 2) PROJEÇÃO de caixa por glossário + TM (consistência visual) */
@@ -256,6 +306,13 @@ translateRouter.post("/", async (req, res) => {
       shots,
       glossary,
     })
+
+    /* 🔹 Padroniza e remove duplicatas eventuais */
+    best = best
+      .replace(/\bATIVADO\b/gi, "LIGADO")
+      .replace(/\bDESATIVADO\b/gi, "DESLIGADO")
+      .replace(/\b(LIGADO)\s+(ATIVADO|LIGADO)\b/gi, "LIGADO")
+      .replace(/\b(DESLIGADO)\s+(DESATIVADO|DESLIGADO)\b/gi, "DESLIGADO")
 
     /* 4) Candidatos (sugestões) com mesma projeção de caixa */
     const candidates = (suggestions || []).map((c) => ({
@@ -286,7 +343,6 @@ translateRouter.post("/", async (req, res) => {
 })
 
 /* Aprovar → gravar na TM (upsert/contadores) */
-// routes/translate.routes.js — substituir a rota /approve por esta
 translateRouter.post("/approve", async (req, res) => {
   const {
     source_text,
@@ -313,9 +369,9 @@ translateRouter.post("/approve", async (req, res) => {
       } else {
         const row = await all(
           `SELECT id FROM translation_logs
-            WHERE source_text = ? AND approved = 0
-            ORDER BY created_at DESC
-            LIMIT 1`,
+             WHERE source_text = ? AND approved = 0
+             ORDER BY created_at DESC
+             LIMIT 1`,
           [source_text]
         )
         if (row?.[0]?.id) {
@@ -324,7 +380,7 @@ translateRouter.post("/approve", async (req, res) => {
         }
       }
     }
-  } catch (_) {
+  } catch {
     // não falha a aprovação se não achar log compatível
   }
 

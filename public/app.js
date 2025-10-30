@@ -236,6 +236,35 @@ compareBtn?.addEventListener("click", () => {
   }
 })
 
+// ===== Glossário: adicionar termo =====
+const glossForm = document.querySelector("#glossForm")
+if (glossForm) {
+  glossForm.addEventListener("submit", async (e) => {
+    e.preventDefault()
+    const fd = new FormData(glossForm)
+    const term_source = (fd.get("term_source") || "").trim()
+    const term_target = (fd.get("term_target") || "").trim()
+    if (!term_source || !term_target) {
+      alert("Preencha os dois campos do glossário.")
+      return
+    }
+
+    try {
+      const r = await fetch("/api/glossary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ term_source, term_target }),
+      })
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      glossForm.reset()
+      await loadGloss() // recarrega a lista
+    } catch (err) {
+      console.error(err)
+      alert("Não foi possível adicionar ao glossário.")
+    }
+  })
+}
+
 // ================= Alternativas / Logs / TM =================
 function renderAlts(items) {
   const list = document.querySelector("#alts")
