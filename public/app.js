@@ -1,66 +1,71 @@
-// ========= Seletores principais =========
+// ====== elementos ======
 const srcSel = document.querySelector("#src")
 const tgtSel = document.querySelector("#tgt")
 const swapBtn = document.querySelector("#swap")
 
 const sourceEl = document.querySelector("#source")
-const targetEl = document.querySelector("#target")
-const targetOverlay = document.querySelector("#targetOverlay")
+const targetTA = document.querySelector("#target") // textarea “origem de verdade”
+const targetRich = document.querySelector("#targetRich") // editor colorido
+
 const targetPreview = document.querySelector("#targetPreview")
+const toggleOldBtn = document.getElementById("toggleOld")
 
 const btnTranslate = document.querySelector("#btnTranslate")
 const btnPasteTranslate = document.querySelector("#btnPasteTranslate")
 const btnApprove = document.querySelector("#btnApprove")
-const altsEl = document.querySelector("#alts")
-
-const glossForm = document.querySelector("#glossForm")
-const glossList = document.querySelector("#glossList")
 
 const preserveLinesChk = document.querySelector("#preserveLines")
 
-// Logs (duas colunas)
+const compareBtn = document.querySelector("#btnCompare")
+let compareActive = false
+let compareBaseline = "" // versão anterior fixa para comparar
+
+const altsEl = document.querySelector("#alts")
 const logPendingEl = document.querySelector("#logPending")
 const logApprovedEl = document.querySelector("#logApproved")
 
-// ========= Trocar idiomas =========
+// ===== helpers =====
+const esc = (s) =>
+  String(s ?? "").replace(
+    /[&<>"']/g,
+    (m) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[
+        m
+      ])
+  )
+
+const locale = "pt-BR"
+
+// ====================== UI geral ======================
 swapBtn?.addEventListener("click", () => {
   const s = srcSel.value
   srcSel.value = tgtSel.value
   tgtSel.value = s
 })
 
-// =============== UTILs de fetch on-demand (sem polling) ===============
-async function fetchJSON(url, opts) {
-  const r = await fetch(url, opts)
-  if (!r.ok) throw new Error(`HTTP ${r.status}`)
-  return r.json()
-}
+// Mostrar/ocultar “Versão anterior”
+toggleOldBtn?.addEventListener("click", () => {
+  const showing = targetPreview.style.display !== "none"
+  targetPreview.style.display = showing ? "none" : "block"
+  toggleOldBtn.textContent = showing ? "Exibir" : "Ocultar"
+})
 
-async function fetchPending() {
-  try {
-    const rows = await fetchJSON("/api/logs?status=pending&limit=200")
-    renderPending(rows)
-  } catch (e) {
-    console.error("fetchPending:", e)
-  }
-}
+// ==================== TRADUÇÃO ====================
+btnTranslate?.addEventListener("click", () =>
+  doTranslate({ log: true, refreshAfter: "pending" })
+)
+btnPasteTranslate?.addEventListener("click", async () => {
+  const clip = (await navigator.clipboard.readText()) || ""
+  if (!clip.trim()) return alert("A área de transferência está vazia.")
+  sourceEl.value = clip.trim()
+  await doTranslate({ log: true, refreshAfter: "pending" })
+})
 
-async function fetchApprovedTM() {
-  try {
-    const rows = await fetchJSON("/api/tm?limit=200")
-    renderApprovedTM(rows)
-  } catch (e) {
-    console.error("fetchApprovedTM:", e)
-  }
-}
-
-// === Loading para tradução (bloqueia botões e dá feedback visual) ===
 function setTranslating(on) {
   if (!btnTranslate.dataset.label)
     btnTranslate.dataset.label = btnTranslate.textContent
-  if (btnPasteTranslate && !btnPasteTranslate.dataset.label) {
+  if (btnPasteTranslate && !btnPasteTranslate.dataset.label)
     btnPasteTranslate.dataset.label = btnPasteTranslate.textContent
-  }
   if (on) {
     btnTranslate.textContent = "Traduzindo..."
     btnTranslate.disabled = true
@@ -68,44 +73,21 @@ function setTranslating(on) {
       btnPasteTranslate.textContent = "Traduzindo..."
       btnPasteTranslate.disabled = true
     }
-    targetEl.classList.add("busy")
+    targetTA.classList.add("busy")
   } else {
-    btnTranslate.textContent = btnTranslate.dataset.label || "Traduzir"
+    btnTranslate.textContent = btnTranslate.dataset.label
     btnTranslate.disabled = false
     if (btnPasteTranslate) {
-      btnPasteTranslate.textContent =
-        btnPasteTranslate.dataset.label || "📥 Trad."
+      btnPasteTranslate.textContent = btnPasteTranslate.dataset.label
       btnPasteTranslate.disabled = false
     }
-    targetEl.classList.remove("busy")
+    targetTA.classList.remove("busy")
   }
 }
 
-// ========= Traduzir (gera ou não log) =========
-btnTranslate?.addEventListener("click", () =>
-  doTranslate({ log: true, refreshAfter: "pending" })
-)
-
-// Colar & Traduzir (gera log também) — NÃO limpar o texto traduzido atual
-btnPasteTranslate?.addEventListener("click", async () => {
-  try {
-    const clip = (await navigator.clipboard.readText()) || ""
-    const text = clip.trim()
-    if (!text) return alert("A área de transferência está vazia.")
-    sourceEl.value = text
-    await doTranslate({ log: true, refreshAfter: "pending" })
-  } catch {
-    alert(
-      "Não consegui ler a área de transferência. Dê permissão ao navegador."
-    )
-  }
-})
-
-// ========= Função principal de tradução =========
 async function doTranslate({ log = true, refreshAfter = null } = {}) {
   const text = sourceEl.value.trim()
   if (!text) return
-
   const payload = {
     text,
     src: srcSel.value,
@@ -115,190 +97,236 @@ async function doTranslate({ log = true, refreshAfter = null } = {}) {
     origin: "ui",
   }
 
-  // 1) guarda o texto anterior e mostra na caixa "Versão anterior"
-  const previous = targetEl.value
-  if (targetPreview) targetPreview.textContent = previous || ""
+  // guarda versão anterior
+  const previous = getCurrentEditorText()
+  targetPreview.textContent = previous || ""
 
   setTranslating(true)
   try {
-    const j = await fetchJSON("/api/translate", {
+    const r = await fetch("/api/translate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     })
-    if (j?.error) return alert(j.error)
-
+    if (!r.ok) {
+      throw new Error(`HTTP ${r.status}`)
+    }
+    const j = await r.json()
     const newText = j.best || ""
 
-    // 2) mostra o diff (verde) por cima do textarea (overlay)
-    showDiff(previous, newText)
+    // atualiza editor base
+    setEditorText(newText)
 
-    // 3) aplica o novo texto no textarea (substituição natural)
-    targetEl.value = newText
+    if (compareActive) {
+      compareBaseline = previous || ""
+      // força exibição da versão anterior
+      targetPreview.style.display = "block"
+      toggleOldBtn.textContent = "Ocultar"
+      renderDiff(compareBaseline, newText) // pinta no editor rico e no preview
+    } else {
+      hideRichMode()
+    }
+
     renderAlts(j.candidates || [])
-
     if (refreshAfter === "pending" && log) await fetchPending()
   } finally {
     setTranslating(false)
   }
 }
 
-// ========= Diff para overlay (destaca apenas mudanças) =========
-function showDiff(oldText, newText) {
-  if (!targetOverlay) return
+// ============ EDITOR: alternância & sincronização ============
+function useRichMode() {
+  // mostra contenteditable, esconde textarea
+  targetTA.classList.add("hidden")
+  targetRich.classList.remove("hidden")
+  // mantém o mesmo texto
+  targetRich.textContent = targetTA.value
+}
+function hideRichMode() {
+  targetRich.classList.add("hidden")
+  targetTA.classList.remove("hidden")
+}
 
-  // se não há texto anterior → limpa e sai
-  if (!oldText) {
-    targetOverlay.classList.add("hidden")
-    targetOverlay.innerHTML = ""
-    if (targetPreview) targetPreview.textContent = ""
-    return
+function getCurrentEditorText() {
+  return compareActive ? targetRich.textContent : targetTA.value
+}
+function setEditorText(text) {
+  if (compareActive) {
+    targetRich.textContent = text
+    targetTA.value = text // manter sincronizado
+  } else {
+    targetTA.value = text
   }
+}
 
-  const oldWords = oldText.split(/\b/)
-  const newWords = newText.split(/\b/)
-  const len = Math.max(oldWords.length, newWords.length)
+// ============ DIFF colorido direto no editor ============
+function tokenizeByWordBoundaries(txt) {
+  return txt.split(/\b/) // mantém separadores para reconstruir layout
+}
 
-  const overlayOut = [] // verde (novas palavras)
-  const previewOut = [] // vermelho (antigas palavras)
+// cursor em contenteditable (índice em caracteres, contando apenas nós de texto)
+function getCaretIndex(root) {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return 0
+  const range = sel.getRangeAt(0)
+  let idx = 0
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null)
+  while (walker.nextNode()) {
+    const node = walker.currentNode
+    if (node === range.startContainer) {
+      return idx + range.startOffset
+    }
+    idx += node.textContent.length
+  }
+  return idx
+}
+
+function setCaretIndex(root, index) {
+  index = Math.max(0, Math.min(index, root.textContent.length))
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null)
+  let node = null,
+    offset = 0,
+    acc = 0
+  while (walker.nextNode()) {
+    const t = walker.currentNode
+    if (acc + t.textContent.length >= index) {
+      node = t
+      offset = index - acc
+      break
+    }
+    acc += t.textContent.length
+  }
+  if (!node) {
+    node = root
+    offset = root.childNodes.length
+  }
+  const sel = window.getSelection()
+  const range = document.createRange()
+  try {
+    range.setStart(node, offset)
+    range.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(range)
+  } catch (_) {}
+}
+
+function renderDiff(oldText, newText) {
+  // tokens
+  const oldT = tokenizeByWordBoundaries(oldText)
+  const newT = tokenizeByWordBoundaries(newText)
+  const len = Math.max(oldT.length, newT.length)
+
+  // “Versão anterior” (vermelho p/ removidos)
+  const prevOut = []
+
+  // Editor rico (verde p/ novos/modificados)
+  const richOut = []
 
   for (let i = 0; i < len; i++) {
-    const a = oldWords[i] || ""
-    const b = newWords[i] || ""
+    const a = oldT[i] || ""
+    const b = newT[i] || ""
 
     if (a === b) {
-      overlayOut.push(`<span class="diff-same">${escapeHTML(b)}</span>`)
-      previewOut.push(escapeHTML(a))
+      richOut.push(esc(b))
+      prevOut.push(esc(a))
     } else if (!a && b) {
-      // nova palavra
-      overlayOut.push(`<span class="diff-add">${escapeHTML(b)}</span>`)
+      richOut.push(`<span class="diff-add">${esc(b)}</span>`)
     } else if (a && !b) {
-      // palavra removida
-      previewOut.push(`<span class="diff-remove">${escapeHTML(a)}</span>`)
+      prevOut.push(`<span class="diff-remove">${esc(a)}</span>`)
     } else if (a.toLowerCase() !== b.toLowerCase()) {
-      // modificada
-      overlayOut.push(`<span class="diff-add">${escapeHTML(b)}</span>`)
-      previewOut.push(`<span class="diff-remove">${escapeHTML(a)}</span>`)
+      richOut.push(`<span class="diff-add">${esc(b)}</span>`)
+      prevOut.push(`<span class="diff-remove">${esc(a)}</span>`)
     } else {
-      overlayOut.push(`<span class="diff-same">${escapeHTML(b)}</span>`)
-      previewOut.push(escapeHTML(a))
+      richOut.push(esc(b))
+      prevOut.push(esc(a))
     }
   }
 
-  // aplica resultados
-  targetOverlay.innerHTML = overlayOut.join("")
-  targetOverlay.classList.remove("hidden")
+  // mantém posição do cursor
+  const caretBefore = getCaretIndex(targetRich)
+  targetRich.innerHTML = richOut.join("")
+  setCaretIndex(
+    targetRich,
+    Math.min(caretBefore, targetRich.textContent.length)
+  )
 
-  if (targetPreview) targetPreview.innerHTML = previewOut.join("")
-
-  // sincroniza scroll
-  targetOverlay.scrollTop = targetEl.scrollTop
-  targetOverlay.scrollLeft = targetEl.scrollLeft
+  targetPreview.innerHTML = prevOut.join("")
+  // sincroniza o valor “oficial” no textarea
+  targetTA.value = targetRich.textContent
 }
 
-// oculta overlay ao editar manualmente
-targetEl.addEventListener("input", () => targetOverlay?.classList.add("hidden"))
-// sincroniza scroll do overlay com o textarea
-targetEl.addEventListener("scroll", () => {
-  if (!targetOverlay || targetOverlay.classList.contains("hidden")) return
-  targetOverlay.scrollTop = targetEl.scrollTop
-  targetOverlay.scrollLeft = targetEl.scrollLeft
+// entrada do usuário quando o modo rico está ativo
+targetRich.addEventListener("input", () => {
+  if (!compareActive) return
+  const current = targetRich.textContent
+  renderDiff(compareBaseline, current)
 })
 
-// ========= Alternativas =========
+// ================= Toggle Comparar =================
+compareBtn?.addEventListener("click", () => {
+  compareActive = !compareActive
+  compareBtn.setAttribute("aria-pressed", String(compareActive))
+  compareBtn.textContent = compareActive
+    ? "🔍 Comparar: ON"
+    : "🔍 Comparar: OFF"
+
+  if (compareActive) {
+    compareBaseline = (targetPreview?.textContent ?? "") || targetTA.value || ""
+    useRichMode()
+    targetPreview.style.display = "block"
+    toggleOldBtn.textContent = "Ocultar"
+    renderDiff(compareBaseline, targetRich.textContent)
+  } else {
+    hideRichMode()
+    // ao sair, garante que o textarea tenha o texto editado
+    targetTA.value = targetTA.value || targetRich.textContent
+  }
+})
+
+// =================== Alternativas, logs e TM ===================
 function renderAlts(items) {
-  altsEl.innerHTML = ""
+  const list = document.querySelector("#alts")
+  list.innerHTML = ""
   items.forEach((it) => {
     const li = document.createElement("li")
-    li.innerHTML = `
-      <div>${escapeHTML(it.text)}</div>
-      <small>${it.origin} ${
+    li.innerHTML = `<div>${esc(it.text)}</div><small>${it.origin || ""} ${
       it.score ? "• " + ((it.score * 100) | 0) + "%" : ""
-    }</small>
-    `
-    li.addEventListener("click", () => (targetEl.value = it.text))
-    altsEl.appendChild(li)
+    }</small>`
+    li.addEventListener("click", () => {
+      setEditorText(it.text)
+      if (compareActive) renderDiff(compareBaseline, it.text)
+    })
+    list.appendChild(li)
   })
 }
 
-// ========= Aprovar par atual (do editor principal) =========
-btnApprove?.addEventListener("click", async () => {
-  const src = sourceEl.value.trim()
-  const tgt = targetEl.value.trim()
-  if (!src || !tgt) return alert("Forneça texto original e tradução.")
+async function fetchJSON(url, opts) {
+  const r = await fetch(url, opts)
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json()
+}
 
-  const j = await fetchJSON("/api/translate/approve", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      source_text: src,
-      target_text: tgt,
-      removeFromLog: true,
-    }),
-  })
-
-  if (j?.ok) {
-    if (j.removedLogId) {
-      const li = document.querySelector(
-        `#logPending li[data-id="${j.removedLogId}"]`
-      )
-      if (li) li.remove()
-    }
-    await fetchApprovedTM()
+async function fetchPending() {
+  try {
+    renderPending(await fetchJSON("/api/logs?status=pending&limit=200"))
+  } catch (e) {
+    console.error(e)
   }
-})
-
-// ========= Glossário =========
-glossForm?.addEventListener("submit", async (e) => {
-  e.preventDefault()
-  const fd = new FormData(glossForm)
-  const payload = Object.fromEntries(fd.entries())
-
-  const j = await fetchJSON("/api/glossary", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
-  if (j.error) return alert(j.error)
-
-  glossForm.reset()
-  await loadGloss()
-})
-
-async function loadGloss() {
-  const items = await fetchJSON("/api/glossary")
-  glossList.innerHTML = items
-    .map(
-      (i) =>
-        `• <b>${escapeHTML(i.term_source)}</b> → ${escapeHTML(i.term_target)}`
-    )
-    .map((line) => `<div>${line}</div>`)
-    .join("")
+}
+async function fetchApprovedTM() {
+  try {
+    renderApprovedTM(await fetchJSON("/api/tm?limit=200"))
+  } catch (e) {
+    console.error(e)
+  }
 }
 
-// ========= Util: escapar HTML =========
-function escapeHTML(s) {
-  return (s || "").replace(
-    /[&<>"']/g,
-    (m) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[
-        m
-      ])
-  )
-}
-
-/* =====================================================================================
-   PENDENTES  (translation_logs.approved = 0) — editável, sem polling
-   ===================================================================================== */
 function renderPending(rows) {
   const byId = new Map(rows.map((r) => [r.id, r]))
-
-  // remove cards que sumiram do servidor
   Array.from(logPendingEl.children).forEach((li) => {
     const id = Number(li.dataset.id)
     if (!byId.has(id)) li.remove()
   })
-
   rows.forEach((row) => {
     let li = logPendingEl.querySelector(`li[data-id="${row.id}"]`)
     if (!li) {
@@ -318,59 +346,43 @@ function renderPending(rows) {
           <button class="btn approve">Aprovar</button>
           <button class="btn reject">Reprovar</button>
           <button class="btn copy">Copiar para editor</button>
-        </div>
-      `
+        </div>`
       const srcTA = li.querySelector(".src")
       const tgtTA = li.querySelector(".tgt")
       srcTA.value = row.source_text || ""
       tgtTA.value = row.target_text || ""
 
       li.querySelector(".save").addEventListener("click", async () => {
-        try {
-          await fetchJSON(`/api/logs/${row.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              source_text: srcTA.value,
-              target_text: tgtTA.value,
-            }),
-          })
-        } catch {
-          alert("Não foi possível salvar a alteração deste log.")
-        }
+        await fetchJSON(`/api/logs/${row.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            source_text: srcTA.value,
+            target_text: tgtTA.value,
+          }),
+        })
       })
-
       li.querySelector(".approve").addEventListener("click", async () => {
-        try {
-          await fetchJSON(`/api/logs/${row.id}/approve`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              source_text: srcTA.value,
-              target_text: tgtTA.value,
-            }),
-          })
-          li.remove()
-          await fetchApprovedTM()
-        } catch {
-          alert("Falha ao aprovar.")
-        }
+        await fetchJSON(`/api/logs/${row.id}/approve`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            source_text: srcTA.value,
+            target_text: tgtTA.value,
+          }),
+        })
+        li.remove()
+        await fetchApprovedTM()
       })
-
       li.querySelector(".reject").addEventListener("click", async () => {
-        try {
-          await fetchJSON(`/api/logs/${row.id}/reject`, { method: "POST" })
-          li.remove()
-        } catch {
-          alert("Falha ao reprovar.")
-        }
+        await fetchJSON(`/api/logs/${row.id}/reject`, { method: "POST" })
+        li.remove()
       })
-
       li.querySelector(".copy").addEventListener("click", () => {
         sourceEl.value = srcTA.value
-        targetEl.value = tgtTA.value
+        setEditorText(tgtTA.value)
+        if (compareActive) renderDiff(compareBaseline, tgtTA.value)
       })
-
       logPendingEl.appendChild(li)
     } else {
       li.querySelector(".src").value = row.source_text || ""
@@ -382,32 +394,12 @@ function renderPending(rows) {
   })
 }
 
-/* ============================================================
-   APROVADOS (TM) — lê/edita/exclui direto; sem polling
-   ============================================================ */
 function renderApprovedTM(rows = []) {
-  const list = document.querySelector("#logApproved")
-  if (!list) return
-
-  const esc = (s) =>
-    String(s ?? "").replace(
-      /[&<>"']/g,
-      (m) =>
-        ({
-          "&": "&amp;",
-          "<": "&lt;",
-          ">": "&gt;",
-          '"': "&quot;",
-          "'": "&#39;",
-        }[m])
-    )
-
-  list.innerHTML = ""
+  logApprovedEl.innerHTML = ""
   rows.forEach((row) => {
     const li = document.createElement("li")
     li.className = "log-item"
     li.dataset.id = row.id
-
     li.innerHTML = `
       <div class="meta">TM #${row.id} • uses:${
       row.uses ?? 0
@@ -422,108 +414,34 @@ function renderApprovedTM(rows = []) {
         <button class="btn update">Salvar edição</button>
         <button class="btn del">Excluir da TM</button>
         <button class="btn copy">Copiar para editor</button>
-      </div>
-    `
-
+      </div>`
     const tgtTA = li.querySelector(".tgt")
-    const metaEl = li.querySelector(".meta")
-    const btnSave = li.querySelector(".update")
-    const btnDel = li.querySelector(".del")
-    const btnCopy = li.querySelector(".copy")
-
-    btnSave.addEventListener("click", async () => {
-      const target_text = (tgtTA.value || "").trim()
-      if (!target_text) return alert("Tradução vazia.")
-      btnSave.disabled = true
-      btnSave.textContent = "Salvando..."
-      try {
-        const up = await fetchJSON(`/api/tm/${row.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ target_text }),
-        })
-        tgtTA.value = up.target_text ?? target_text
-        metaEl.textContent = `TM #${up.id} • uses:${
-          up.uses ?? row.uses ?? 0
-        } • quality:${Number(up.quality ?? row.quality ?? 0.9).toFixed(2)}`
-        btnSave.textContent = "Salvo!"
-        setTimeout(() => {
-          btnSave.textContent = "Salvar edição"
-          btnSave.disabled = false
-        }, 600)
-      } catch (e) {
-        btnSave.disabled = false
-        btnSave.textContent = "Salvar edição"
-        alert(e.message || "Erro ao salvar edição.")
-      }
+    li.querySelector(".update").addEventListener("click", async () => {
+      const up = await fetchJSON(`/api/tm/${row.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target_text: tgtTA.value.trim() }),
+      })
+      tgtTA.value = up.target_text
+      li.querySelector(".meta").textContent = `TM #${up.id} • uses:${
+        up.uses ?? row.uses ?? 0
+      } • quality:${Number(up.quality ?? row.quality ?? 0.9).toFixed(2)}`
     })
-
-    btnDel.addEventListener("click", async () => {
+    li.querySelector(".del").addEventListener("click", async () => {
       if (!confirm("Remover esta tradução da memória (TM)?")) return
-      btnDel.disabled = true
-      btnDel.textContent = "Excluindo..."
-      try {
-        await fetchJSON(`/api/tm/${row.id}`, { method: "DELETE" })
-        li.remove()
-      } catch (e) {
-        btnDel.disabled = false
-        btnDel.textContent = "Excluir da TM"
-        alert(e.message || "Erro ao excluir.")
-      }
+      await fetchJSON(`/api/tm/${row.id}`, { method: "DELETE" })
+      li.remove()
     })
-
-    btnCopy.addEventListener("click", () => {
+    li.querySelector(".copy").addEventListener("click", () => {
       sourceEl.value = li.querySelector(".src").value || row.source_norm || ""
-      targetEl.value = tgtTA.value || row.target_text || ""
+      setEditorText(tgtTA.value || row.target_text || "")
+      if (compareActive) renderDiff(compareBaseline, getCurrentEditorText())
     })
-
     logApprovedEl.appendChild(li)
   })
 }
 
-/* =======================
-   Toolbar de edição (Unicode)
-   ======================= */
-const locale = "pt-BR"
-function tokenizeUnicodePieces(s) {
-  const re = /(\p{L}[\p{L}\p{M}]*(?:[’'\-]\p{L}[\p{L}\p{M}]*)*)/gu
-  const out = []
-  let last = 0,
-    m
-  while ((m = re.exec(s)) !== null) {
-    if (m.index > last) out.push({ type: "sep", text: s.slice(last, m.index) })
-    out.push({ type: "word", text: m[0] })
-    last = re.lastIndex
-  }
-  if (last < s.length) out.push({ type: "sep", text: s.slice(last) })
-  return out
-}
-function isAllCaps(word) {
-  const hasLetter = /\p{L}/u.test(word)
-  return hasLetter && word === word.toLocaleUpperCase(locale)
-}
-function capFirstUnicode(word) {
-  const arr = Array.from(word)
-  if (arr.length === 0) return word
-  const first = arr[0].toLocaleUpperCase(locale)
-  const rest = arr.slice(1).join("").toLocaleLowerCase(locale)
-  return first + rest
-}
-function getCapOptions() {
-  const minLenInput = document.querySelector("#capMinLen")
-  const ignoreInput = document.querySelector("#capIgnore")
-  const defaultIgnore = "a,o,as,os,de,do,da,dos,das,e,ou,para,por,no,na,nos,nas"
-  const minLen = Math.max(0, parseInt(minLenInput?.value || "2", 10) || 0)
-  const ignoreSet = new Set(
-    (ignoreInput?.value || defaultIgnore)
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((w) => w.toLocaleLowerCase(locale))
-  )
-  return { minLen, ignoreSet }
-}
-
+// =================== Toolbar (copiar/case) ===================
 const btnCopy = document.querySelector("#btnCopy")
 const btnUpper = document.querySelector("#btnUpper")
 const btnLower = document.querySelector("#btnLower")
@@ -531,64 +449,90 @@ const btnCapWords = document.querySelector("#btnCapWords")
 const btnCapSentence = document.querySelector("#btnCapSentence")
 
 btnCopy?.addEventListener("click", () => {
-  navigator.clipboard.writeText(targetEl.value)
+  navigator.clipboard.writeText(getCurrentEditorText())
   alert("Texto copiado!")
 })
 btnUpper?.addEventListener("click", () => {
-  targetEl.value = targetEl.value.toLocaleUpperCase(locale)
+  const t = getCurrentEditorText().toLocaleUpperCase(locale)
+  setEditorText(t)
+  if (compareActive) renderDiff(compareBaseline, t)
 })
 btnLower?.addEventListener("click", () => {
-  targetEl.value = targetEl.value.toLocaleLowerCase(locale)
+  const t = getCurrentEditorText().toLocaleLowerCase(locale)
+  setEditorText(t)
+  if (compareActive) renderDiff(compareBaseline, t)
 })
 btnCapWords?.addEventListener("click", () => {
-  const { minLen, ignoreSet } = getCapOptions()
-  const tokens = tokenizeUnicodePieces(targetEl.value)
-  let isFirstWord = true
-  for (const t of tokens) {
-    if (t.type === "sep") {
-      if (/[.!?]\s*$/.test(t.text)) isFirstWord = true
-      continue
-    }
-    if (isAllCaps(t.text)) {
-      isFirstWord = false
-      continue
-    }
-    const parts = t.text.split(/([’'-])/u)
-    for (let i = 0; i < parts.length; i += 2) {
-      const chunk = parts[i]
-      if (!chunk) continue
-      const baseLower = chunk.toLocaleLowerCase(locale)
-      const isStop = ignoreSet.has(baseLower)
-      const shouldCap = isFirstWord || (!isStop && baseLower.length >= minLen)
-      parts[i] = shouldCap ? capFirstUnicode(baseLower) : baseLower
-      isFirstWord = false
-    }
-    t.text = parts.join("")
+  const minLen = Math.max(
+    0,
+    parseInt(document.querySelector("#capMinLen")?.value || "2", 10) || 0
+  )
+  const ignore = new Set(
+    (
+      document.querySelector("#capIgnore")?.value ||
+      "a,o,as,os,de,do,da,dos,das,e,ou,para,por,no,na,nos,nas"
+    )
+      .split(",")
+      .map((s) => s.trim().toLocaleLowerCase(locale))
+      .filter(Boolean)
+  )
+  const s = getCurrentEditorText()
+  const tokens = s.split(/(\p{L}[\p{L}\p{M}]*(?:[’'\-]\p{L}[\p{L}\p{M}]*)*)/gu)
+  let first = true
+  for (let i = 1; i < tokens.length; i += 2) {
+    const w = tokens[i]
+    const base = w.toLocaleLowerCase(locale)
+    if (first || (!ignore.has(base) && base.length >= minLen)) {
+      tokens[i] = base.charAt(0).toLocaleUpperCase(locale) + base.slice(1)
+    } else tokens[i] = base
+    first = false
   }
-  targetEl.value = tokens.map((x) => x.text).join("")
+  const out = tokens.join("")
+  setEditorText(out)
+  if (compareActive) renderDiff(compareBaseline, out)
 })
 btnCapSentence?.addEventListener("click", () => {
-  const s = targetEl.value.toLocaleLowerCase(locale)
-  const out = s.replace(/(^\s*\p{L}|[.!?]\s*\p{L})/gu, (m) => {
-    const arr = Array.from(m)
-    return arr[0].toLocaleUpperCase(locale) + arr.slice(1).join("")
-  })
-  targetEl.value = out
+  const out = getCurrentEditorText()
+    .toLocaleLowerCase(locale)
+    .replace(/(^\s*\p{L}|[.!?]\s*\p{L})/gu, (m) => {
+      const a = Array.from(m)
+      return a[0].toLocaleUpperCase(locale) + a.slice(1).join("")
+    })
+  setEditorText(out)
+  if (compareActive) renderDiff(compareBaseline, out)
 })
 
-// ========= Inicialização =========
+// =================== Aprovar par atual ===================
+btnApprove?.addEventListener("click", async () => {
+  const src = sourceEl.value.trim()
+  const tgt = getCurrentEditorText().trim()
+  if (!src || !tgt) return alert("Forneça texto original e tradução.")
+  const r = await fetch("/api/translate/approve", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source_text: src,
+      target_text: tgt,
+      removeFromLog: true,
+    }),
+  })
+  const j = await r.json()
+  if (j?.ok) await fetchApprovedTM()
+})
+
+// =================== Init ===================
 ;(async function init() {
   await loadGloss()
   await fetchPending()
   await fetchApprovedTM()
 })()
 
-// Botão Exibir/Ocultar versão anterior
-const toggleOldBtn = document.getElementById("toggleOld")
-toggleOldBtn?.addEventListener("click", () => {
-  const preview = targetPreview
-  if (!preview) return
-  const showing = preview.style.display !== "none"
-  preview.style.display = showing ? "none" : "block"
-  toggleOldBtn.textContent = showing ? "Exibir" : "Ocultar"
-})
+async function loadGloss() {
+  const r = await fetch("/api/glossary")
+  if (!r.ok) return
+  const items = await r.json()
+  document.querySelector("#glossList").innerHTML = items
+    .map((i) => `• <b>${esc(i.term_source)}</b> → ${esc(i.term_target)}`)
+    .map((line) => `<div>${line}</div>`)
+    .join("")
+}

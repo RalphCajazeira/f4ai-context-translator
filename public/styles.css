@@ -1,122 +1,276 @@
-:root { --bg:#0b0f14; --fg:#e6edf3; --muted:#93a1b1; --accent:#4fb; }
-
-*{ box-sizing:border-box; }
-body{ margin:0; background:var(--bg); color:var(--fg); font-family:system-ui, Segoe UI, Arial; }
-
-header{ display:flex; justify-content:space-between; align-items:center; padding:1rem; border-bottom:1px solid #222; }
-.langs{ display:flex; gap:.5rem; align-items:center; }
-
-select,button,input,textarea{
-  background:#111; color:var(--fg); border:1px solid #222; border-radius:8px; padding:.5rem .75rem;
-}
-button{ cursor:pointer; }
-
-main.grid{ display:grid; grid-template-columns:1fr 1fr 360px; gap:1rem; padding:1rem; }
-.panel{ background:#0d131a; border:1px solid #1a1f27; border-radius:12px; padding:1rem; display:flex; flex-direction:column; gap:.5rem; min-height:60vh; }
-.panel h3{ margin:.25rem 0; }
-.panel.side{ min-height:auto; }
-
-textarea{ width:100%; min-height:220px; resize:vertical; }
-
-.actions{ display:flex; gap:.5rem; }
-.actions .keep-lines{ display:inline-flex; align-items:center; gap:.4rem; font-size:.9rem; opacity:.9; }
-
-#alts{ list-style:none; padding:0; margin:.5rem 0 0; }
-#alts li{ border:1px solid #222; border-radius:8px; padding:.5rem; margin:.5rem 0; cursor:pointer; }
-#alts li small{ opacity:.7; }
-
-.gloss-list{ margin-top:.5rem; max-height:240px; overflow:auto; border-top:1px solid #222; padding-top:.5rem; }
-.gloss-list div{ padding:.25rem 0; border-bottom:1px dashed #222; }
-
-footer{ border-top:1px solid #222; padding:.75rem 1rem; opacity:.8; }
-
-.toolbar{ display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:.3rem; }
-.toolbar button{ font-size:1rem; padding:.4rem .6rem; background:#182028; border:1px solid #333; border-radius:6px; color:#e6edf3; transition:background .2s; }
-.toolbar button:hover{ background:#263140; }
-
-.logs-row{ grid-column:span 3; display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
-.panel.log{ max-height:60vh; overflow-y:auto; }
-#logPending,#logApproved{ list-style:none; margin:0; padding:0; }
-.log-item{ border:1px solid #222; border-radius:8px; padding:.6rem; margin:.5rem 0; display:flex; flex-direction:column; gap:.35rem; }
-.log-item .meta{ font-size:.8rem; opacity:.8; }
-.log-item textarea{ width:100%; min-height:90px; resize:vertical; }
-.log-item .actions{ display:flex; gap:.5rem; flex-wrap:wrap; }
-
-.btn{ background:#182028; border:1px solid #333; color:#e6edf3; padding:.35rem .6rem; border-radius:6px; cursor:pointer; }
-.btn:hover{ background:#263140; }
-
-@media (max-width:1100px){
-  main.grid{ grid-template-columns:1fr; }
-  .logs-row{ grid-template-columns:1fr; }
-  .panel{ min-height:auto; }
+:root {
+  --bg: #0b0f14;
+  --fg: #e6edf3;
+  --muted: #93a1b1;
 }
 
-/* Loading/Busy */
-button[disabled]{ opacity:.6; cursor:progress; }
-textarea.busy{
-  background-image:linear-gradient(45deg,rgba(255,255,255,.05) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.05) 50%,rgba(255,255,255,.05) 75%,transparent 75%,transparent);
-  background-size:24px 24px; animation:stripes 1s linear infinite;
+* {
+  box-sizing: border-box;
 }
-@keyframes stripes{ from{background-position:0 0;} to{background-position:24px 0;} }
-
-/* Versão anterior */
-.preview-wrap{ margin-top:.75rem; border:1px solid rgba(255,255,255,.08); border-radius:8px; background:rgba(255,255,255,.02); }
-.preview-title{ font-size:.85rem; opacity:.7; padding:.5rem .75rem; border-bottom:1px solid rgba(255,255,255,.06); display:flex; justify-content:space-between; align-items:center; }
-.preview{ padding:.75rem; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; white-space:pre-wrap; word-wrap:break-word; line-height:1.5; }
-
-/* Botão mini */
-.btn-mini{ background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.15); color:#ddd; border-radius:4px; font-size:.75rem; padding:2px 8px; cursor:pointer; transition:background .2s; }
-.btn-mini:hover{ background:rgba(255,255,255,.2); }
-
-/* Área de tradução com overlay para highlight de diferenças */
-.target-wrap{ position:relative; }
-#target{ position:relative; background:transparent; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; line-height:1.5; }
-#targetOverlay{
-  position:absolute; inset:0; padding:.75rem; pointer-events:none;
-  white-space:pre-wrap; word-wrap:break-word; font-family:inherit; line-height:1.5;
-  color:transparent; overflow:hidden;  /* sincroniza com scroll do textarea via JS */
-}
-#targetOverlay .diff-same{ color:inherit; } /* invisível (mostramos só as mudanças) */
-#targetOverlay .diff-add{ color:#34d399; font-weight:600; }
-#targetOverlay.hidden{ display:none; }
-
-
-/* === Highlight correto: marca-texto, sem duplicar letras === */
-#targetOverlay { 
-  color: transparent;           /* NADA do overlay deve ter cor de fonte */
-}
-#targetOverlay .diff-same { 
-  color: transparent;           /* idem: conteúdo "igual" fica invisível */
-}
-#targetOverlay .diff-add  { 
-  color: transparent;           /* também invisível... */
-  background: rgba(52, 211, 153, .28);  /* ...mas com fundo verde translúcido */
-  border-radius: 3px;
-  /* opcional: um espacinho para o “marca-texto” não colar nas letras */
-  box-decoration-break: clone;  /* garante cantos em quebras de linha */
-  -webkit-box-decoration-break: clone;
-  padding: 0 .04em;
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, Segoe UI, Arial;
 }
 
-/* === Marca-texto de diferenças (novo vs anterior) === */
-
-/* Sobreposição verde no campo de tradução (novo texto) */
-#targetOverlay { color: transparent; }
-#targetOverlay .diff-same { color: transparent; }
-#targetOverlay .diff-add {
-  color: transparent;
-  background: rgba(52, 211, 153, 0.28); /* verde translúcido */
-  border-radius: 3px;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-  padding: 0 .04em;
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  border-bottom: 1px solid #222;
+}
+.langs {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
 }
 
-/* Na “Versão anterior”, realça em vermelho o que sumiu */
+select,
+button,
+input,
+textarea {
+  background: #111;
+  color: var(--fg);
+  border: 1px solid #222;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+}
+button {
+  cursor: pointer;
+}
+
+main.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 360px;
+  gap: 1rem;
+  padding: 1rem;
+}
+.panel {
+  background: #0d131a;
+  border: 1px solid #1a1f27;
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 60vh;
+}
+.panel h3 {
+  margin: 0.25rem 0;
+}
+.panel.side {
+  min-height: auto;
+}
+
+textarea {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+}
+.actions .keep-lines {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+#alts {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+}
+#alts li {
+  border: 1px solid #222;
+  border-radius: 8px;
+  padding: 0.5rem;
+  margin: 0.5rem 0;
+  cursor: pointer;
+}
+#alts li small {
+  opacity: 0.7;
+}
+
+.gloss-list {
+  margin-top: 0.5rem;
+  max-height: 240px;
+  overflow: auto;
+  border-top: 1px solid #222;
+  padding-top: 0.5rem;
+}
+.gloss-list div {
+  padding: 0.25rem 0;
+  border-bottom: 1px dashed #222;
+}
+
+footer {
+  border-top: 1px solid #222;
+  padding: 0.75rem 1rem;
+  opacity: 0.8;
+}
+
+.toolbar {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.3rem;
+}
+.toolbar button {
+  font-size: 1rem;
+  padding: 0.4rem 0.6rem;
+  background: #182028;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #e6edf3;
+  transition: background 0.2s;
+}
+.toolbar button:hover {
+  background: #263140;
+}
+
+.logs-row {
+  grid-column: span 3;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+.panel.log {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+#logPending,
+#logApproved {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.log-item {
+  border: 1px solid #222;
+  border-radius: 8px;
+  padding: 0.6rem;
+  margin: 0.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.log-item .meta {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+.log-item textarea {
+  width: 100%;
+  min-height: 90px;
+  resize: vertical;
+}
+.log-item .actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.btn-mini {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #ddd;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-mini:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Loading */
+button[disabled] {
+  opacity: 0.6;
+  cursor: progress;
+}
+textarea.busy {
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.05) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0.05) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 24px 24px;
+  animation: stripes 1s linear infinite;
+}
+@keyframes stripes {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 24px 0;
+  }
+}
+
+/* Versão anterior (onde o removido fica vermelho) */
+.preview-wrap {
+  margin-top: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.preview-title {
+  font-size: 0.85rem;
+  opacity: 0.7;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.preview {
+  padding: 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  line-height: 1.5;
+}
 #targetPreview .diff-remove {
-  background: rgba(239, 68, 68, 0.28);  /* vermelho translúcido */
-  border-radius: 3px;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-  padding: 0 .04em;
+  color: #ef4444;
+  font-weight: 600;
+}
+
+/* ===== Editor rico para colorir o texto sendo editado ===== */
+.target-wrap {
+  position: relative;
+}
+.rich {
+  position: relative;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  border: 1px solid #222;
+  border-radius: 8px;
+  padding: 0.75rem;
+  min-height: 220px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1.5;
+  background: #111;
+  outline: none;
+  overflow: auto;
+}
+.rich.hidden {
+  display: none;
+}
+
+/* Destaques (igual ao estilo do “DESATIVADO”) */
+.diff-add {
+  color: #34d399;
+  font-weight: 600;
 }

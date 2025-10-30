@@ -30,23 +30,48 @@
     <main class="grid">
       <section class="panel">
         <h3>Texto original</h3>
-        <textarea id="source" placeholder="Cole aqui o texto do mod..."></textarea>
+        <textarea
+          id="source"
+          placeholder="Cole aqui o texto do mod..."
+        ></textarea>
         <div class="actions">
-          <button id="btnTranslate" title="Traduzir (gera log)">Traduzir</button>
-          <button id="btnPasteTranslate" title="Colar da área de transferência e traduzir">📥 Trad.</button>
+          <button id="btnTranslate" title="Traduzir (gera log)">
+            Traduzir
+          </button>
+          <button
+            id="btnPasteTranslate"
+            title="Colar da área de transferência e traduzir"
+          >
+            📥 Trad.
+          </button>
           <label class="keep-lines">
             <input type="checkbox" id="preserveLines" checked />
             Preservar quebras de linha
           </label>
-          <button id="btnApprove" title="Salvar par fonte→alvo na memória (TM) sem gerar log">Aprovar na Memória</button>
+          <button
+            id="btnApprove"
+            title="Salvar par fonte→alvo na memória (TM) sem gerar log"
+          >
+            Aprovar na Memória
+          </button>
         </div>
       </section>
 
       <section class="panel">
         <h3>Tradução</h3>
+
+        <!-- Wrapper do editor: alterna entre textarea e contenteditable -->
         <div class="target-wrap">
+          <!-- textarea “de verdade” (para copiar, salvar etc.) -->
           <textarea id="target" spellcheck="false"></textarea>
-          <div id="targetOverlay" class="overlay" aria-hidden="true"></div>
+          <!-- editor rico visível quando Comparar: ON -->
+          <div
+            id="targetRich"
+            class="rich hidden"
+            contenteditable="true"
+            spellcheck="false"
+            aria-label="Tradução (edição com destaque de diferenças)"
+          ></div>
         </div>
 
         <div class="preview-wrap">
@@ -61,19 +86,45 @@
           <button title="Copiar texto" id="btnCopy">📋</button>
           <button title="MAIÚSCULO" id="btnUpper">🅰</button>
           <button title="minúsculo" id="btnLower">🔡</button>
-          <button title="Primeira letra de cada palavra" id="btnCapWords">🅿</button>
-          <button title="Primeira letra da frase" id="btnCapSentence">📝</button>
+          <button title="Primeira letra de cada palavra" id="btnCapWords">
+            🅿
+          </button>
+          <button title="Primeira letra da frase" id="btnCapSentence">
+            📝
+          </button>
+          <!-- NOVO: toggle de comparação -->
+          <button
+            title="Comparar alterações (liga/desliga)"
+            id="btnCompare"
+            aria-pressed="false"
+          >
+            🔍 Comparar: OFF
+          </button>
         </div>
 
-        <div class="cap-options" style="display:flex;gap:.5rem;flex-wrap:wrap">
-          <label>Ignorar palavras menores que
-            <input id="capMinLen" type="number" value="2" min="0" style="width:4rem" />
+        <div
+          class="cap-options"
+          style="display: flex; gap: 0.5rem; flex-wrap: wrap"
+        >
+          <label
+            >Ignorar palavras menores que
+            <input
+              id="capMinLen"
+              type="number"
+              value="2"
+              min="0"
+              style="width: 4rem"
+            />
             letra(s)
           </label>
-          <label style="flex:1 1 380px">Ignorar as palavras
-            <input id="capIgnore" type="text"
-                   value="a,o,as,os,de,do,da,dos,das,e,ou,para,por,no,na,nos,nas"
-                   placeholder="Separadas por vírgula" />
+          <label style="flex: 1 1 380px"
+            >Ignorar as palavras
+            <input
+              id="capIgnore"
+              type="text"
+              value="a,o,as,os,de,do,da,dos,das,e,ou,para,por,no,na,nos,nas"
+              placeholder="Separadas por vírgula"
+            />
           </label>
         </div>
 
@@ -85,7 +136,10 @@
 
       <aside class="panel side">
         <h3>Glossário (dicionário próprio)</h3>
-        <p>Ex.: <b>Plot → Terreno</b>, <b>Tutorial Message History → Histórico de Mensagens do Tutorial</b></p>
+        <p>
+          Ex.: <b>Plot → Terreno</b>,
+          <b>Tutorial Message History → Histórico de Mensagens do Tutorial</b>
+        </p>
         <form id="glossForm">
           <input name="term_source" placeholder="termo EN" required />
           <input name="term_target" placeholder="termo PT" required />
@@ -107,7 +161,10 @@
     </main>
 
     <footer>
-      <small>Backends: <b>Ollama LLM</b> (context-aware) • Fallback: <b>M2M100</b></small>
+      <small
+        >Backends: <b>Ollama LLM</b> (context-aware) • Fallback:
+        <b>M2M100</b></small
+      >
     </footer>
 
     <script src="/app.js"></script>
