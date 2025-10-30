@@ -236,35 +236,6 @@ compareBtn?.addEventListener("click", () => {
   }
 })
 
-// ===== Glossário: adicionar termo =====
-const glossForm = document.querySelector("#glossForm")
-if (glossForm) {
-  glossForm.addEventListener("submit", async (e) => {
-    e.preventDefault()
-    const fd = new FormData(glossForm)
-    const term_source = (fd.get("term_source") || "").trim()
-    const term_target = (fd.get("term_target") || "").trim()
-    if (!term_source || !term_target) {
-      alert("Preencha os dois campos do glossário.")
-      return
-    }
-
-    try {
-      const r = await fetch("/api/glossary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ term_source, term_target }),
-      })
-      if (!r.ok) throw new Error(`HTTP ${r.status}`)
-      glossForm.reset()
-      await loadGloss() // recarrega a lista
-    } catch (err) {
-      console.error(err)
-      alert("Não foi possível adicionar ao glossário.")
-    }
-  })
-}
-
 // ================= Alternativas / Logs / TM =================
 function renderAlts(items) {
   const list = document.querySelector("#alts")
@@ -503,17 +474,81 @@ btnApprove?.addEventListener("click", async () => {
 
 // =================== Init ===================
 ;(async function init() {
-  await loadGloss()
+  if (window.initGlossaryUI) window.initGlossaryUI() // ← hook do novo glossary.js
   await fetchPending()
   await fetchApprovedTM()
 })()
 
-async function loadGloss() {
-  const r = await fetch("/api/glossary")
-  if (!r.ok) return
-  const items = await r.json()
-  document.querySelector("#glossList").innerHTML = items
-    .map((i) => `• <b>${esc(i.term_source)}</b> → ${esc(i.term_target)}`)
-    .map((line) => `<div>${line}</div>`)
-    .join("")
-}
+// ==== Controle de Abas (Glossário / Blacklist) ====
+document.querySelectorAll(".tabs .tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    const name = tab.dataset.tab
+    document
+      .querySelectorAll(".tabs .tab")
+      .forEach((t) => t.classList.remove("active"))
+    tab.classList.add("active")
+    document
+      .querySelectorAll(".tab-content")
+      .forEach((div) => div.classList.remove("active"))
+    const target = document.getElementById(`tab-${name}`)
+    if (target) target.classList.add("active")
+  })
+})
+
+// ===== Retrátil do painel lateral (Glossário/Blacklist) =====
+;(function setupCollapsibleSidePanel() {
+  const side = document.getElementById("sidePanel")
+  const body = document.getElementById("sideBody")
+  const btn = document.getElementById("toggleSide")
+  if (!side || !body || !btn) return
+
+  const LS_KEY = "ui.sidePanelCollapsed"
+
+  function setBodyMaxHeight() {
+    const wasCollapsed = side.classList.contains("is-collapsed")
+    if (wasCollapsed) side.classList.remove("is-collapsed")
+    body.style.maxHeight = "none"
+    const h = body.scrollHeight
+    body.style.maxHeight = h + "px"
+    if (wasCollapsed) side.classList.add("is-collapsed")
+  }
+
+  function toggle() {
+    const collapsed = side.classList.toggle("is-collapsed")
+    btn.setAttribute("aria-expanded", String(!collapsed))
+    localStorage.setItem(LS_KEY, collapsed ? "1" : "0")
+    if (!collapsed) requestAnimationFrame(() => setBodyMaxHeight())
+  }
+
+  const saved = localStorage.getItem(LS_KEY)
+  if (saved === "1") {
+    side.classList.add("is-collapsed")
+    btn.setAttribute("aria-expanded", "false")
+  } else {
+    btn.setAttribute("aria-expanded", "true")
+  }
+
+  if (!side.classList.contains("is-collapsed")) {
+    window.requestAnimationFrame(() => setBodyMaxHeight())
+  }
+
+  btn.addEventListener("click", toggle)
+  btn.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault()
+      toggle()
+    }
+  })
+
+  document.querySelectorAll(".tabs .tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      if (!side.classList.contains("is-collapsed")) {
+        requestAnimationFrame(() => setBodyMaxHeight())
+      }
+    })
+  })
+
+  window.addEventListener("resize", () => {
+    if (!side.classList.contains("is-collapsed")) setBodyMaxHeight()
+  })
+})()

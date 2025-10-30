@@ -100,6 +100,7 @@ textarea {
   opacity: 0.7;
 }
 
+/* (mantido para retrocompatibilidade, apesar de hoje usarmos tabela) */
 .gloss-list {
   margin-top: 0.5rem;
   max-height: 240px;
@@ -206,7 +207,7 @@ footer {
   overflow: auto;
 }
 
-/* Versão anterior: removidos em vermelho */
+/* Versão anterior */
 .preview-wrap {
   margin-top: 0.75rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -234,8 +235,215 @@ footer {
   font-weight: 600;
 }
 
-/* Destaques no editor (igual “DESATIVADO”) */
+/* Destaques no editor */
 .diff-add {
   color: #34d399;
   font-weight: 600;
+}
+
+/* ==== TABS laterais ==== */
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.tab {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 6px;
+  color: #ddd;
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-align: center;
+  transition: background 0.2s;
+}
+.tab:hover {
+  background: #1a1a1a;
+}
+.tab.active {
+  background: #263140;
+  border-color: #335;
+  font-weight: 600;
+}
+.tab-content {
+  display: none;
+}
+.tab-content.active {
+  display: block;
+}
+
+/* ===== Painel lateral retrátil ===== */
+.side-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  border: 1px solid #222;
+  background: #111;
+  color: #ddd;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.2s;
+}
+.icon-btn:hover {
+  background: #1a1a1a;
+}
+.icon-btn:active {
+  transform: scale(0.96);
+}
+#sideBody {
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+}
+#sidePanel.is-collapsed #sideBody {
+  max-height: 0 !important;
+  opacity: 0;
+  pointer-events: none;
+}
+#sideBody {
+  max-height: 2000px;
+} /* fallback; JS ajusta */
+#sidePanel.is-collapsed #toggleSide {
+  opacity: 0.8;
+}
+
+/* ===== Tabela/Buttons utilitários (para glossário/blacklist/logs) ===== */
+.table-wrap {
+  overflow: auto;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #222;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.table thead th {
+  text-align: left;
+  font-weight: 600;
+  background: #111;
+  border-bottom: 1px solid #222;
+  padding: 0.5rem 0.6rem;
+}
+.table tbody td {
+  border-top: 1px solid #1b1f27;
+  padding: 0.45rem 0.6rem;
+  vertical-align: top;
+}
+.table .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.w100 {
+  width: 100%;
+}
+.ta-center {
+  text-align: center;
+}
+.ta-right {
+  text-align: right;
+}
+
+.row.gap {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.btn {
+  background: #182028;
+  border: 1px solid #2a3442;
+  color: #e6edf3;
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+}
+.btn:hover {
+  background: #243142;
+}
+.btn-primary {
+  background: #1f2a38;
+  border-color: #304156;
+}
+.btn-primary:hover {
+  background: #2a3a4e;
+}
+.btn-secondary {
+  background: #1e2430;
+  border-color: #2f3646;
+}
+.btn-secondary:hover {
+  background: #293142;
+}
+.btn-danger {
+  background: #3a1f23;
+  border-color: #5a2b31;
+}
+.btn-danger:hover {
+  background: #4a252b;
+}
+/* ===== Glossário: cards ===== */
+.gloss-cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+.gloss-card {
+  border: 1px solid #222;
+  border-radius: 10px;
+  background: #10161d;
+  padding: 0.75rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem 0.8rem;
+}
+.gloss-card .field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.gloss-card .label {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+.gloss-card .value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.gloss-card .actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 0.25rem;
+}
+
+/* modo edição */
+.gloss-card input[type="text"] {
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+}
+.gloss-card .ta-center {
+  text-align: center;
+}
+
+/* responsivo */
+@media (max-width: 860px) {
+  .gloss-card {
+    grid-template-columns: 1fr;
+  }
 }

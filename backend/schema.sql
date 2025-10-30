@@ -43,3 +43,11 @@ CREATE TABLE IF NOT EXISTS translation_logs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_logs_created ON translation_logs(created_at DESC);
+
+-- Lista Negra: termos que NUNCA devem ser traduzidos
+CREATE TABLE IF NOT EXISTS blacklist (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  term TEXT NOT NULL UNIQUE,
+  notes TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);

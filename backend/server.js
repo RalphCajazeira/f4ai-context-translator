@@ -9,6 +9,7 @@ import { glossaryRouter } from "./routes/glossary.routes.js"
 import { segmentsRouter } from "./routes/segments.routes.js"
 import { logsRouter } from "./routes/logs.routes.js"
 import { tmRouter } from "./routes/tm.routes.js"
+import blacklistRouter from "./routes/blacklist.routes.js"
 
 dotenv.config()
 
@@ -25,6 +26,7 @@ app.use("/api/glossary", glossaryRouter)
 app.use("/api/segments", segmentsRouter)
 app.use("/api/logs", logsRouter)
 app.use("/api/tm", tmRouter)
+app.use("/api/blacklist", blacklistRouter)
 
 app.use("/", express.static(path.resolve("public")))
 const PORT = process.env.PORT || 3333
