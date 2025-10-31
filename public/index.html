@@ -16,236 +16,254 @@
             assistidas por IA.
           </p>
         </div>
-        <div class="langs" aria-label="Configuração de idiomas">
-          <label class="sr-only" for="src">Idioma de origem</label>
-          <select id="src">
-            <option value="en" selected>Inglês</option>
-            <option value="pt-BR">Português Br</option>
-            <option value="es">Espanhol</option>
-            <option value="fr">Francês</option>
-          </select>
-          <span aria-hidden="true">→</span>
-          <label class="sr-only" for="tgt">Idioma alvo</label>
-          <select id="tgt">
-            <option value="pt-BR" selected>Português Br</option>
-            <option value="en">Inglês</option>
-            <option value="es">Espanhol</option>
-            <option value="fr">Francês</option>
-          </select>
-          <button id="swap" type="button" aria-label="Inverter idiomas">↔</button>
+        <div class="langs" aria-label="Configuração de idiomas e contexto">
+          <div class="lang-selects">
+            <label class="sr-only" for="src">Idioma de origem</label>
+            <select id="src">
+              <option value="en" selected>Inglês</option>
+              <option value="pt-BR">Português Br</option>
+              <option value="es">Espanhol</option>
+              <option value="fr">Francês</option>
+            </select>
+            <span aria-hidden="true">→</span>
+            <label class="sr-only" for="tgt">Idioma alvo</label>
+            <select id="tgt">
+              <option value="pt-BR" selected>Português Br</option>
+              <option value="en">Inglês</option>
+              <option value="es">Espanhol</option>
+              <option value="fr">Francês</option>
+            </select>
+            <button id="swap" type="button" aria-label="Inverter idiomas">↔</button>
+          </div>
+          <div class="context-inputs">
+            <label class="sr-only" for="gameName">Nome do jogo</label>
+            <input
+              id="gameName"
+              type="text"
+              placeholder="Nome do jogo"
+              autocomplete="off"
+            />
+            <label class="sr-only" for="modName">Nome do mod</label>
+            <input
+              id="modName"
+              type="text"
+              placeholder="Nome do mod"
+              autocomplete="off"
+            />
+          </div>
         </div>
       </header>
 
-      <section
-        id="statusMessage"
-        class="status-banner"
-        aria-live="polite"
-        hidden
-      ></section>
+      <section id="statusStack" class="status-stack" aria-live="polite"></section>
 
-      <main class="grid">
-      <!-- Coluna 1 -->
-      <section class="panel">
-        <h3>Texto original</h3>
-        <textarea
-          id="source"
-          placeholder="Cole aqui o texto do mod..."
-        ></textarea>
-        <div class="actions">
-          <button
-            id="btnTranslate"
-            class="btn btn-primary"
-            title="Traduzir (gera log)"
-          >
-            Traduzir
-          </button>
-          <button
-            id="btnPasteTranslate"
-            class="btn btn-secondary"
-            title="Colar e traduzir"
-          >
-            📥 Trad.
-          </button>
-          <label class="keep-lines">
-            <input type="checkbox" id="preserveLines" checked />
-            Preservar quebras de linha
-          </label>
-          <button
-            id="btnApprove"
-            class="btn btn-primary"
-            title="Salvar par na TM (sem log)"
-          >
-            Aprovar na Memória
-          </button>
-        </div>
-      </section>
+      <nav class="app-tabs" role="tablist">
+        <button class="app-tab active" data-tab="workspace" role="tab" aria-selected="true">
+          Tradução
+        </button>
+        <button class="app-tab" data-tab="tools" role="tab" aria-selected="false">
+          Ferramentas
+        </button>
+      </nav>
 
-      <!-- Coluna 2 -->
-      <section class="panel">
-        <h3>Tradução</h3>
+      <div class="tab-panels">
+        <section class="tab-panel active" id="tab-workspace" role="tabpanel">
+          <main class="grid">
+            <!-- Coluna 1 -->
+            <section class="panel">
+              <h3>Texto original</h3>
+              <textarea
+                id="source"
+                placeholder="Cole aqui o texto do mod..."
+              ></textarea>
+              <div class="actions">
+                <button
+                  id="btnTranslate"
+                  class="btn btn-primary"
+                  title="Traduzir (gera log)"
+                >
+                  Traduzir
+                </button>
+                <button
+                  id="btnPasteTranslate"
+                  class="btn btn-secondary"
+                  title="Colar e traduzir"
+                >
+                  📥 Trad.
+                </button>
+                <button
+                  id="btnApproveAndNext"
+                  class="btn btn-accent"
+                  title="Aprovar tradução atual e iniciar a próxima"
+                >
+                  ✅ Aprovar &amp; 📥 Próx.
+                </button>
+                <label class="keep-lines">
+                  <input type="checkbox" id="preserveLines" checked />
+                  Preservar quebras de linha
+                </label>
+                <button
+                  id="btnApprove"
+                  class="btn btn-primary"
+                  title="Salvar par na TM (sem log)"
+                >
+                  Aprovar na Memória
+                </button>
+              </div>
+            </section>
 
-        <!-- ÚNICA CAIXA DE EDIÇÃO -->
-        <div
-          id="editor"
-          class="editor"
-          contenteditable="true"
-          spellcheck="false"
-          aria-label="Tradução (editor)"
-        ></div>
+            <!-- Coluna 2 -->
+            <section class="panel">
+              <h3>Tradução</h3>
 
-        <div class="preview-wrap">
-          <div class="preview-title">
-            <span>Versão anterior</span>
-            <button id="toggleOld" class="btn-mini">Exibir</button>
-          </div>
-          <div id="targetPreview" class="preview" style="display: none"></div>
-        </div>
+              <!-- ÚNICA CAIXA DE EDIÇÃO -->
+              <div
+                id="editor"
+                class="editor"
+                contenteditable="true"
+                spellcheck="false"
+                aria-label="Tradução (editor)"
+              ></div>
 
-        <div class="toolbar">
-          <button title="Copiar texto" id="btnCopy">📋</button>
-          <button title="MAIÚSCULO" id="btnUpper">🅰</button>
-          <button title="minúsculo" id="btnLower">🔡</button>
-          <button title="Primeira letra de cada palavra" id="btnCapWords">
-            🅿
-          </button>
-          <button title="Primeira letra da frase" id="btnCapSentence">
-            📝
-          </button>
-          <button
-            title="Comparar alterações"
-            id="btnCompare"
-            aria-pressed="false"
-          >
-            🔍 Comparar: OFF
-          </button>
-        </div>
+              <div class="preview-wrap">
+                <div class="preview-title">
+                  <span>Versão anterior</span>
+                  <button id="toggleOld" class="btn-mini">Exibir</button>
+                </div>
+                <div id="targetPreview" class="preview" style="display: none"></div>
+              </div>
 
-        <div class="cap-options">
-          <label>
-            Ignorar palavras menores que
-            <input
-              id="capMinLen"
-              type="number"
-              value="2"
-              min="0"
-            />
-            letra(s)
-          </label>
-          <label class="cap-ignore">
-            Ignorar as palavras
-            <input
-              id="capIgnore"
-              type="text"
-              value="a,o,as,os,de,do,da,dos,das,e,ou,para,por,no,na,nos,nas"
-              placeholder="Separadas por vírgula"
-            />
-          </label>
-        </div>
+              <div class="toolbar">
+                <button title="Copiar texto" id="btnCopy">📋</button>
+                <button title="MAIÚSCULO" id="btnUpper">🅰</button>
+                <button title="minúsculo" id="btnLower">🔡</button>
+                <button title="Primeira letra de cada palavra" id="btnCapWords">
+                  🅿
+                </button>
+                <button title="Primeira letra da frase" id="btnCapSentence">
+                  📝
+                </button>
+                <button
+                  title="Comparar alterações"
+                  id="btnCompare"
+                  aria-pressed="false"
+                >
+                  🔍 Comparar: OFF
+                </button>
+              </div>
 
-        <div>
-          <h4>Alternativas</h4>
-          <ul id="alts" data-empty></ul>
-        </div>
-      </section>
+              <div class="cap-options">
+                <label>
+                  Ignorar palavras menores que
+                  <input
+                    id="capMinLen"
+                    type="number"
+                    value="2"
+                    min="0"
+                  />
+                  letra(s)
+                </label>
+                <label class="cap-ignore">
+                  Ignorar as palavras
+                  <input
+                    id="capIgnore"
+                    type="text"
+                    value="a,o,as,os,de,do,da,dos,das,e,ou,para,por,no,na,nos,nas"
+                    placeholder="Separadas por vírgula"
+                  />
+                </label>
+              </div>
 
-      <!-- Coluna 3: painel lateral com abas -->
-      <aside class="panel side" id="sidePanel">
-        <div class="side-header">
-          <h3>Ferramentas</h3>
-          <button
-            id="toggleSide"
-            class="icon-btn"
-            aria-expanded="true"
-            aria-controls="sideBody"
-            title="Exibir/ocultar ferramentas"
-          >
-            👁
-          </button>
-        </div>
+              <div>
+                <h4>Alternativas</h4>
+                <ul id="alts" data-empty></ul>
+              </div>
+            </section>
+          </main>
 
-        <div id="sideBody">
-          <div class="tabs">
-            <button class="tab active" data-tab="glossary">Glossário</button>
-            <button class="tab" data-tab="blacklist">Lista Negra</button>
-          </div>
+          <!-- Linha inferior: logs -->
+          <section class="logs-row">
+            <section class="panel log">
+              <h3>Log de Traduções — Pendentes</h3>
+              <ul
+                id="logPending"
+                data-empty
+                data-empty-label="Nenhum item pendente no momento."
+              ></ul>
+            </section>
+            <section class="panel log">
+              <h3>Log de Traduções — Aprovados (Memória)</h3>
+              <ul
+                id="logApproved"
+                data-empty
+                data-empty-label="Nenhum registro aprovado disponível."
+              ></ul>
+            </section>
+          </section>
+        </section>
 
-          <!-- ABA: GLOSSÁRIO (em CARDS) -->
-          <div class="tab-content active" id="tab-glossary">
-            <h3>Glossário (dicionário próprio)</h3>
-            <p>
-              Use para forçar traduções específicas e dar contexto à IA. Ex.:
-              <b>Trashcan Carla → Carla-Lixeira</b> (Notas: "NPC comerciante
-              itinerante")
-            </p>
+        <section class="tab-panel" id="tab-tools" role="tabpanel" aria-hidden="true">
+          <div class="tools-wrap">
+            <div class="tabs">
+              <button class="tab active" data-tab="glossary">Glossário</button>
+              <button class="tab" data-tab="blacklist">Lista Negra</button>
+            </div>
 
-            <form id="glossForm" class="row gap">
-              <input name="term_source" placeholder="termo EN" required />
-              <input name="term_target" placeholder="termo PT" required />
-              <input name="game" placeholder="Game (ex.: Fallout 4)" />
-              <input name="notes" placeholder="Notas/Descrição (opcional)" />
-              <button class="btn btn-primary">Adicionar</button>
-            </form>
+            <!-- ABA: GLOSSÁRIO (em CARDS) -->
+            <div class="tab-content active" id="tab-glossary">
+              <h3>Glossário (dicionário próprio)</h3>
+              <p>
+                Use para forçar traduções específicas e dar contexto à IA. Ex.:
+                <b>Trashcan Carla → Carla-Lixeira</b> (Notas: "NPC comerciante
+                itinerante")
+              </p>
 
-            <!-- Lista de cards -->
-            <div id="glossCards" class="gloss-cards"><!-- via JS --></div>
-          </div>
+              <form id="glossForm" class="row gap">
+                <input name="term_source" placeholder="termo EN" required />
+                <input name="term_target" placeholder="termo PT" required />
+                <input name="notes" placeholder="Notas/Descrição (opcional)" />
+                <button class="btn btn-primary">Adicionar</button>
+              </form>
 
-          <!-- ABA: LISTA NEGRA -->
-          <div class="tab-content" id="tab-blacklist">
-            <h3>Lista Negra (não traduzir)</h3>
-            <form id="blackForm" class="row gap">
-              <input
-                type="text"
-                name="term"
-                placeholder="Termo ex.: Pip-Boy"
-                required
-              />
-              <input
-                type="text"
-                name="notes"
-                placeholder="Observações (opcional)"
-              />
-              <button class="btn btn-primary" type="submit">Adicionar</button>
-            </form>
+              <!-- Lista de cards -->
+              <div id="glossCards" class="gloss-cards"><!-- via JS --></div>
+            </div>
 
-            <div class="table-wrap">
-              <table id="blacklistTable" class="table">
-                <thead>
-                  <tr>
-                    <th>Termo</th>
-                    <th>Obs</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <!-- via JS -->
-                </tbody>
-              </table>
+            <!-- ABA: LISTA NEGRA -->
+            <div class="tab-content" id="tab-blacklist">
+              <h3>Lista Negra (não traduzir)</h3>
+              <form id="blackForm" class="row gap">
+                <input
+                  type="text"
+                  name="term"
+                  placeholder="Termo ex.: Pip-Boy"
+                  required
+                />
+                <input
+                  type="text"
+                  name="notes"
+                  placeholder="Observações (opcional)"
+                />
+                <button class="btn btn-primary" type="submit">Adicionar</button>
+              </form>
+
+              <div class="table-wrap">
+                <table id="blacklistTable" class="table">
+                  <thead>
+                    <tr>
+                      <th>Termo</th>
+                      <th>Obs</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <!-- via JS -->
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-        </div>
-      </aside>
-
-      <!-- Linha inferior: logs -->
-      <section class="logs-row">
-        <section class="panel log">
-          <h3>Log de Traduções — Pendentes</h3>
-          <ul
-            id="logPending"
-            data-empty
-            data-empty-label="Nenhum item pendente no momento."
-          ></ul>
         </section>
-        <section class="panel log">
-          <h3>Log de Traduções — Aprovados (Memória)</h3>
-          <ul
-            id="logApproved"
-            data-empty
-            data-empty-label="Nenhum registro aprovado disponível."
-          ></ul>
-        </section>
-      </section>
-      </main>
+      </div>
 
       <footer>
         <small

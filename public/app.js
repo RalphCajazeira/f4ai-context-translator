@@ -12,6 +12,7 @@ const toggleOldBtn = document.getElementById("toggleOld")
 const btnTranslate = document.querySelector("#btnTranslate")
 const btnPasteTranslate = document.querySelector("#btnPasteTranslate")
 const btnApprove = document.querySelector("#btnApprove")
+const btnApproveAndNext = document.querySelector("#btnApproveAndNext")
 const preserveLinesChk = document.querySelector("#preserveLines")
 
 const compareBtn = document.querySelector("#btnCompare")
@@ -21,7 +22,17 @@ let compareBaseline = "" // versão anterior fixa
 const altsEl = document.querySelector("#alts")
 const logPendingEl = document.querySelector("#logPending")
 const logApprovedEl = document.querySelector("#logApproved")
-const statusBanner = document.querySelector("#statusMessage")
+const statusStack = document.querySelector("#statusStack")
+const gameInput = document.querySelector("#gameName")
+const modInput = document.querySelector("#modName")
+
+const STATUS_ICONS = {
+  success: "✔️",
+  error: "⚠️",
+  warning: "⚠️",
+  loading: "⏳",
+  info: "ℹ️",
+}
 
 const locale = "pt-BR"
 const esc = (s) =>
@@ -33,25 +44,74 @@ const esc = (s) =>
       ])
   )
 
-let statusTimer = null
+let persistentToast = null
+function dismissToast(el) {
+  if (!el) return
+  el.classList.add("dismissed")
+  setTimeout(() => el.remove(), 200)
+}
+
+function createToast(message, variant = "info") {
+  const el = document.createElement("div")
+  el.className = "status-toast"
+  el.dataset.variant = variant
+
+  const icon = document.createElement("span")
+  icon.className = "icon"
+  icon.textContent = STATUS_ICONS[variant] || STATUS_ICONS.info
+
+  const content = document.createElement("div")
+  content.className = "content"
+  content.textContent = message
+
+  const close = document.createElement("button")
+  close.type = "button"
+  close.className = "dismiss"
+  close.setAttribute("aria-label", "Fechar notificação")
+  close.textContent = "✕"
+  close.addEventListener("click", () => {
+    if (persistentToast === el) persistentToast = null
+    dismissToast(el)
+  })
+
+  el.append(icon, content, close)
+  return el
+}
+
 function showStatus(message = "", variant = "info", { persist = false } = {}) {
-  if (!statusBanner) return
-  if (statusTimer) {
-    clearTimeout(statusTimer)
-    statusTimer = null
-  }
+  if (!statusStack) return
   if (!message) {
-    statusBanner.hidden = true
+    if (persistentToast) {
+      dismissToast(persistentToast)
+      persistentToast = null
+    }
     return
   }
-  statusBanner.textContent = message
-  statusBanner.dataset.variant = variant
-  statusBanner.hidden = false
-  if (!persist) {
-    statusTimer = setTimeout(() => {
-      statusBanner.hidden = true
-    }, 4500)
+
+  if (persist) {
+    if (!persistentToast) {
+      persistentToast = createToast(message, variant)
+      statusStack.appendChild(persistentToast)
+    } else {
+      persistentToast.dataset.variant = variant
+      const icon = persistentToast.querySelector(".icon")
+      const content = persistentToast.querySelector(".content")
+      if (icon) icon.textContent = STATUS_ICONS[variant] || STATUS_ICONS.info
+      if (content) content.textContent = message
+    }
+    return
   }
+
+  if (persistentToast) {
+    dismissToast(persistentToast)
+    persistentToast = null
+  }
+
+  const toast = createToast(message, variant)
+  statusStack.appendChild(toast)
+  setTimeout(() => {
+    if (toast.isConnected) dismissToast(toast)
+  }, 4800)
 }
 
 function handleError(error, fallback = "Ocorreu um erro inesperado.") {
@@ -121,25 +181,33 @@ toggleOldBtn?.addEventListener("click", () => {
 btnTranslate?.addEventListener("click", () =>
   doTranslate({ log: true, refreshAfter: "pending" })
 )
-btnPasteTranslate?.addEventListener("click", async () => {
+btnPasteTranslate?.addEventListener("click", () =>
+  pasteAndTranslate({ log: true, refreshAfter: "pending" })
+)
+
+async function pasteAndTranslate({ log = true, refreshAfter = "pending" } = {}) {
   try {
     const clip = (await navigator.clipboard.readText()) || ""
     if (!clip.trim()) {
       showStatus("A área de transferência está vazia.", "warning")
-      return
+      return false
     }
     sourceEl.value = clip.trim()
-    await doTranslate({ log: true, refreshAfter: "pending" })
+    await doTranslate({ log, refreshAfter })
+    return true
   } catch (error) {
     handleError(error, "Não foi possível acessar a área de transferência.")
+    return false
   }
-})
+}
 
 function setTranslating(on) {
   if (!btnTranslate.dataset.label)
     btnTranslate.dataset.label = btnTranslate.textContent
   if (btnPasteTranslate && !btnPasteTranslate.dataset.label)
     btnPasteTranslate.dataset.label = btnPasteTranslate.textContent
+  if (btnApproveAndNext && !btnApproveAndNext.dataset.label)
+    btnApproveAndNext.dataset.label = btnApproveAndNext.textContent
   if (on) {
     btnTranslate.textContent = "Traduzindo..."
     btnTranslate.disabled = true
@@ -147,6 +215,7 @@ function setTranslating(on) {
       btnPasteTranslate.textContent = "Traduzindo..."
       btnPasteTranslate.disabled = true
     }
+    if (btnApproveAndNext) btnApproveAndNext.disabled = true
     editor.dataset.busy = "1"
     showStatus("Traduzindo...", "loading", { persist: true })
   } else {
@@ -156,6 +225,7 @@ function setTranslating(on) {
       btnPasteTranslate.textContent = btnPasteTranslate.dataset.label
       btnPasteTranslate.disabled = false
     }
+    if (btnApproveAndNext) btnApproveAndNext.disabled = false
     delete editor.dataset.busy
   }
 }
@@ -166,6 +236,8 @@ async function doTranslate({ log = true, refreshAfter = null } = {}) {
     showStatus("Cole ou digite um texto para traduzir.", "warning")
     return
   }
+  const gameName = (gameInput?.value || "").trim()
+  const modName = (modInput?.value || "").trim()
   const payload = {
     text,
     src: srcSel.value,
@@ -173,6 +245,8 @@ async function doTranslate({ log = true, refreshAfter = null } = {}) {
     preserveLines: !!(preserveLinesChk && preserveLinesChk.checked),
     log,
     origin: "ui",
+    game: gameName || null,
+    mod: modName || null,
   }
 
   // guarda “versão anterior”
@@ -563,12 +637,12 @@ function applyTransform(fn) {
 }
 
 // =================== Aprovar par atual ===================
-btnApprove?.addEventListener("click", async () => {
+async function approveCurrent({ showSuccess = true } = {}) {
   const src = sourceEl.value.trim()
   const tgt = editor.textContent.trim()
   if (!src || !tgt) {
     showStatus("Forneça texto original e tradução para aprovar.", "warning")
-    return
+    return false
   }
   try {
     await fetchJSON("/api/translate/approve", {
@@ -582,9 +656,39 @@ btnApprove?.addEventListener("click", async () => {
     })
     await fetchApprovedTM()
     await fetchPending()
-    showStatus("Par atual aprovado e salvo na memória.", "success")
+    if (showSuccess)
+      showStatus("Par atual aprovado e salvo na memória.", "success")
+    return true
   } catch (error) {
     handleError(error, "Não foi possível aprovar a tradução atual.")
+    return false
+  }
+}
+
+btnApprove?.addEventListener("click", () => approveCurrent({ showSuccess: true }))
+
+btnApproveAndNext?.addEventListener("click", async () => {
+  if (btnApproveAndNext.disabled) return
+  btnApproveAndNext.disabled = true
+  try {
+    showStatus("Aprovando tradução atual...", "loading", { persist: true })
+    const ok = await approveCurrent({ showSuccess: false })
+    if (!ok) return
+    showStatus(
+      "Par aprovado! Preparando próxima tradução...",
+      "loading",
+      { persist: true }
+    )
+    const started = await pasteAndTranslate({ log: true, refreshAfter: "pending" })
+    if (!started) {
+      showStatus(
+        "Par aprovado, mas nenhuma nova tradução foi encontrada na área de transferência.",
+        "warning"
+      )
+      return
+    }
+  } finally {
+    if (!editor.dataset.busy) btnApproveAndNext.disabled = false
   }
 })
 
@@ -611,60 +715,27 @@ document.querySelectorAll(".tabs .tab").forEach((tab) => {
   })
 })
 
-// ===== Retrátil do painel lateral (Glossário/Blacklist) =====
-;(function setupCollapsibleSidePanel() {
-  const side = document.getElementById("sidePanel")
-  const body = document.getElementById("sideBody")
-  const btn = document.getElementById("toggleSide")
-  if (!side || !body || !btn) return
-
-  const LS_KEY = "ui.sidePanelCollapsed"
-
-  function setBodyMaxHeight() {
-    const wasCollapsed = side.classList.contains("is-collapsed")
-    if (wasCollapsed) side.classList.remove("is-collapsed")
-    body.style.maxHeight = "none"
-    const h = body.scrollHeight
-    body.style.maxHeight = h + "px"
-    if (wasCollapsed) side.classList.add("is-collapsed")
-  }
-
-  function toggle() {
-    const collapsed = side.classList.toggle("is-collapsed")
-    btn.setAttribute("aria-expanded", String(!collapsed))
-    localStorage.setItem(LS_KEY, collapsed ? "1" : "0")
-    if (!collapsed) requestAnimationFrame(() => setBodyMaxHeight())
-  }
-
-  const saved = localStorage.getItem(LS_KEY)
-  if (saved === "1") {
-    side.classList.add("is-collapsed")
-    btn.setAttribute("aria-expanded", "false")
-  } else {
-    btn.setAttribute("aria-expanded", "true")
-  }
-
-  if (!side.classList.contains("is-collapsed")) {
-    window.requestAnimationFrame(() => setBodyMaxHeight())
-  }
-
-  btn.addEventListener("click", toggle)
-  btn.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault()
-      toggle()
-    }
+const appTabs = document.querySelectorAll(".app-tab")
+function activateAppTab(name) {
+  document.querySelectorAll(".app-tab").forEach((tab) => {
+    const isActive = tab.dataset.tab === name
+    tab.classList.toggle("active", isActive)
+    tab.setAttribute("aria-selected", isActive ? "true" : "false")
   })
-
-  document.querySelectorAll(".tabs .tab").forEach((tab) => {
-    tab.addEventListener("click", () => {
-      if (!side.classList.contains("is-collapsed")) {
-        requestAnimationFrame(() => setBodyMaxHeight())
-      }
-    })
+  document.querySelectorAll(".tab-panel").forEach((panel) => {
+    const isActive = panel.id === `tab-${name}`
+    panel.classList.toggle("active", isActive)
+    panel.setAttribute("aria-hidden", isActive ? "false" : "true")
   })
+}
 
-  window.addEventListener("resize", () => {
-    if (!side.classList.contains("is-collapsed")) setBodyMaxHeight()
-  })
-})()
+appTabs.forEach((tab) => {
+  tab.addEventListener("click", () => activateAppTab(tab.dataset.tab))
+})
+
+if (appTabs.length) {
+  const current = Array.from(appTabs).find((tab) =>
+    tab.classList.contains("active")
+  )
+  activateAppTab(current?.dataset.tab || appTabs[0].dataset.tab)
+}

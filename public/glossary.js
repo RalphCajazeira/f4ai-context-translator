@@ -87,10 +87,11 @@ function g_mountGlossaryForm() {
   form.addEventListener("submit", async (e) => {
     e.preventDefault()
     const fd = new FormData(form)
+    const gameField = document.querySelector("#gameName")
     const body = {
       term_source: (fd.get("term_source") || "").trim(),
       term_target: (fd.get("term_target") || "").trim(),
-      game: (fd.get("game") || "").trim() || null,
+      game: (gameField?.value || "").trim() || null,
       notes: (fd.get("notes") || "").trim() || null,
       approved: 1,
     }
