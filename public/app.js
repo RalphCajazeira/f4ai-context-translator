@@ -172,16 +172,16 @@ function refreshContextConsumers() {
   fetchApprovedTM(1)
 }
 
-const logSearchInput = document.querySelector("#logSearch")
+const logPendingSearchInput = document.querySelector("#logPendingSearch")
+const logApprovedSearchInput = document.querySelector("#logApprovedSearch")
 const logPendingInfo = document.querySelector("#logPendingInfo")
 const logApprovedInfo = document.querySelector("#logApprovedInfo")
 const logPendingPager = document.querySelector("#logPendingPager")
 const logApprovedPager = document.querySelector("#logApprovedPager")
 
 const logState = {
-  search: "",
-  pending: { page: 1, totalPages: 1, total: 0 },
-  approved: { page: 1, totalPages: 1, total: 0 },
+  pending: { page: 1, totalPages: 1, total: 0, search: "" },
+  approved: { page: 1, totalPages: 1, total: 0, search: "" },
 }
 
 function updateLogMeta(kind, meta = {}) {
@@ -525,7 +525,7 @@ async function fetchPending(page = logState.pending.page) {
     limit: "50",
     page: String(page),
   })
-  if (logState.search) params.set("q", logState.search)
+  if (logState.pending.search) params.set("q", logState.pending.search)
   const game = currentGame()
   if (game) params.set("game", game)
   const mod = currentMod()
@@ -546,7 +546,7 @@ async function fetchPending(page = logState.pending.page) {
 async function fetchApprovedTM(page = logState.approved.page) {
   logState.approved.page = page
   const params = new URLSearchParams({ limit: "50", page: String(page) })
-  if (logState.search) params.set("q", logState.search)
+  if (logState.approved.search) params.set("q", logState.approved.search)
   const game = currentGame()
   if (game) params.set("game", game)
   const mod = currentMod()
@@ -565,15 +565,28 @@ async function fetchApprovedTM(page = logState.approved.page) {
   }
 }
 
-let logSearchDebounce = null
-logSearchInput?.addEventListener("input", () => {
-  clearTimeout(logSearchDebounce)
-  logSearchDebounce = setTimeout(() => {
-    logState.search = logSearchInput.value.trim()
-    logState.pending.page = 1
-    logState.approved.page = 1
-    fetchPending(1)
-    fetchApprovedTM(1)
+const logSearchDebounce = { pending: null, approved: null }
+
+function handleLogSearch(kind, value) {
+  const state = logState[kind]
+  if (!state) return
+  state.search = value.trim()
+  state.page = 1
+  if (kind === "pending") fetchPending(1)
+  else fetchApprovedTM(1)
+}
+
+logPendingSearchInput?.addEventListener("input", () => {
+  clearTimeout(logSearchDebounce.pending)
+  logSearchDebounce.pending = setTimeout(() => {
+    handleLogSearch("pending", logPendingSearchInput.value)
+  }, 250)
+})
+
+logApprovedSearchInput?.addEventListener("input", () => {
+  clearTimeout(logSearchDebounce.approved)
+  logSearchDebounce.approved = setTimeout(() => {
+    handleLogSearch("approved", logApprovedSearchInput.value)
   }, 250)
 })
 
@@ -607,18 +620,17 @@ logApprovedPager?.addEventListener("click", (event) => {
 
 function renderPending(rows = [], meta = {}) {
   if (!logPendingEl) return
-  const items = Array.isArray(rows) ? rows : []
-  const byId = new Map(items.map((r) => [r.id, r]))
-  Array.from(logPendingEl.children).forEach((li) => {
-    const id = Number(li.dataset.id)
-    if (!byId.has(id)) li.remove()
-  })
-  items.forEach((row) => {
-    let li = logPendingEl.querySelector(`li[data-id="${row.id}"]`)
-    if (!li) {
-      li = document.createElement("li")
+  logPendingEl.innerHTML = ""
+  const items = Array.isArray(rows) ? [...rows] : []
+  items
+    .filter((row) => row && typeof row === "object")
+    .sort((a, b) => (Number(b?.id) || 0) - (Number(a?.id) || 0))
+    .forEach((row) => {
+      const li = document.createElement("li")
       li.className = "log-item"
       li.dataset.id = row.id
+      li.dataset.game = row.game || ""
+      li.dataset.mod = row.mod || ""
       li.innerHTML = `
         <div class="meta">
           <span class="line">#${row.id} • ${row.origin || "api"} • ${
@@ -698,25 +710,7 @@ function renderPending(rows = [], meta = {}) {
         showStatus("Par copiado para o editor.", "info")
       })
       logPendingEl.appendChild(li)
-    } else {
-      li.querySelector(".src").value = row.source_text || ""
-      li.querySelector(".tgt").value = row.target_text || ""
-      li.dataset.id = row.id
-      const metaEl = li.querySelector(".meta")
-      if (metaEl) {
-        metaEl.innerHTML = `
-          <span class="line">#${row.id} • ${row.origin || "api"} • ${
-          row.created_at || ""
-        }</span>
-          <span class="line tags">
-            <span class="tag">🎮 ${esc(row.game || "—")}</span>
-            <span class="tag">🧩 ${esc(row.mod || "—")}</span>
-          </span>`
-      }
-    }
-    li.dataset.game = row.game || ""
-    li.dataset.mod = row.mod || ""
-  })
+    })
   if (logPendingEl.children.length)
     logPendingEl.removeAttribute("data-empty")
   else logPendingEl.setAttribute("data-empty", "1")
@@ -725,8 +719,11 @@ function renderPending(rows = [], meta = {}) {
 function renderApprovedTM(rows = [], meta = {}) {
   if (!logApprovedEl) return
   logApprovedEl.innerHTML = ""
-  const items = Array.isArray(rows) ? rows : []
-  items.forEach((row) => {
+  const items = Array.isArray(rows) ? [...rows] : []
+  items
+    .filter((row) => row && typeof row === "object")
+    .sort((a, b) => (Number(b?.id) || 0) - (Number(a?.id) || 0))
+    .forEach((row) => {
     const li = document.createElement("li")
     li.className = "log-item"
     li.dataset.id = row.id
