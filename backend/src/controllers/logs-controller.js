@@ -1,6 +1,7 @@
 import { prisma } from "@/database/prisma.js";
 import { AppError } from "@/utils/app-error.js";
 import { recordApproval } from "@/services/suggest.service.js";
+import { serializeTranslationLog } from "@/utils/serializers.js";
 
 const STATUS_MAP = {
   pending: 0,
@@ -43,7 +44,7 @@ class LogsController {
       take,
     });
 
-    return response.json(rows);
+    return response.json(rows.map(serializeTranslationLog));
   }
 
   async update(request, response) {
@@ -69,7 +70,10 @@ class LogsController {
         where: { id },
         data,
       });
-      return response.json({ ok: true, row: entry });
+      return response.json({
+        ok: true,
+        row: serializeTranslationLog(entry),
+      });
     } catch (error) {
       if (error.code === "P2025") {
         throw new AppError("Log não encontrado", 404);
@@ -112,7 +116,10 @@ class LogsController {
       },
     });
 
-    return response.json({ ok: true, row: updated });
+    return response.json({
+      ok: true,
+      row: serializeTranslationLog(updated),
+    });
   }
 
   async reject(request, response) {
@@ -126,7 +133,10 @@ class LogsController {
         where: { id },
         data: { approved: STATUS_MAP.rejected },
       });
-      return response.json({ ok: true, row: entry });
+      return response.json({
+        ok: true,
+        row: serializeTranslationLog(entry),
+      });
     } catch (error) {
       if (error.code === "P2025") {
         throw new AppError("Log não encontrado", 404);

@@ -1,5 +1,6 @@
 import { prisma } from "@/database/prisma.js";
 import { AppError } from "@/utils/app-error.js";
+import { serializeTranslationMemory } from "@/utils/serializers.js";
 
 function norm(value = "") {
   return String(value).trim().replace(/\s+/g, " ").toLowerCase();
@@ -65,7 +66,7 @@ class TranslationMemoryController {
       take,
     });
 
-    return response.json(rows);
+    return response.json(rows.map(serializeTranslationMemory));
   }
 
   async create(request, response) {
@@ -116,7 +117,11 @@ class TranslationMemoryController {
         },
       });
 
-      return response.json({ ok: true, row: updated, upsert: "update" });
+      return response.json({
+        ok: true,
+        row: serializeTranslationMemory(updated),
+        upsert: "update",
+      });
     }
 
     const created = await prisma.translationMemoryEntry.create({
@@ -131,7 +136,11 @@ class TranslationMemoryController {
       },
     });
 
-    return response.json({ ok: true, row: created, upsert: "insert" });
+    return response.json({
+      ok: true,
+      row: serializeTranslationMemory(created),
+      upsert: "insert",
+    });
   }
 
   async update(request, response) {
@@ -165,7 +174,10 @@ class TranslationMemoryController {
         },
       });
 
-      return response.json({ ok: true, row: entry });
+      return response.json({
+        ok: true,
+        row: serializeTranslationMemory(entry),
+      });
     } catch (error) {
       if (error.code === "P2025") {
         throw new AppError("TM não encontrado", 404);

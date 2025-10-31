@@ -1,5 +1,6 @@
 import { prisma } from "@/database/prisma.js";
 import { AppError } from "@/utils/app-error.js";
+import { serializeSegment } from "@/utils/serializers.js";
 
 class SegmentsController {
   async create(request, response) {
@@ -37,7 +38,7 @@ class SegmentsController {
       take,
     });
 
-    return response.json(rows);
+    return response.json(rows.map(serializeSegment));
   }
 
   async update(request, response) {

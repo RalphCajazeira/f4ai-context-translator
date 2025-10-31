@@ -1,5 +1,6 @@
 import { prisma } from "@/database/prisma.js";
 import { AppError } from "@/utils/app-error.js";
+import { serializeBlacklistEntry } from "@/utils/serializers.js";
 
 class BlacklistController {
   async index(request, response) {
@@ -17,7 +18,7 @@ class BlacklistController {
       (a.term || "").localeCompare(b.term || "", "pt", { sensitivity: "base" })
     );
 
-    return response.json(rows);
+    return response.json(rows.map(serializeBlacklistEntry));
   }
 
   async create(request, response) {
@@ -43,7 +44,7 @@ class BlacklistController {
       },
     });
 
-    return response.status(201).json(entry);
+    return response.status(201).json(serializeBlacklistEntry(entry));
   }
 
   async delete(request, response) {

@@ -1,5 +1,6 @@
 import { prisma } from "@/database/prisma.js";
 import { AppError } from "@/utils/app-error.js";
+import { serializeGlossaryEntry } from "@/utils/serializers.js";
 
 class GlossaryController {
   async index(request, response) {
@@ -11,7 +12,7 @@ class GlossaryController {
       })
     );
 
-    return response.json(entries);
+    return response.json(entries.map(serializeGlossaryEntry));
   }
 
   async create(request, response) {
@@ -39,7 +40,7 @@ class GlossaryController {
       },
     });
 
-    return response.status(201).json(entry);
+    return response.status(201).json(serializeGlossaryEntry(entry));
   }
 
   async update(request, response) {
@@ -74,7 +75,7 @@ class GlossaryController {
         where: { id },
         data,
       });
-      return response.json(entry);
+      return response.json(serializeGlossaryEntry(entry));
     } catch (error) {
       if (error.code === "P2025") {
         throw new AppError("Registro não encontrado", 404);
