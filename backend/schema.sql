@@ -2,6 +2,8 @@ CREATE TABLE IF NOT EXISTS tm_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source_norm TEXT NOT NULL,
   target_text TEXT NOT NULL,
+  src_lang TEXT DEFAULT '',
+  tgt_lang TEXT DEFAULT '',
   uses INTEGER DEFAULT 1,
   quality REAL DEFAULT 0.9,
   last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -28,8 +30,10 @@ CREATE TABLE IF NOT EXISTS segments (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS tm_entries_source_norm_uq
-  ON tm_entries(source_norm);
+DROP INDEX IF EXISTS tm_entries_source_norm_uq;
+
+CREATE UNIQUE INDEX IF NOT EXISTS tm_entries_source_norm_lang_uq
+  ON tm_entries(source_norm, src_lang, tgt_lang);
 
 
 -- NOVO: logs de traduções (para hotkey e UI)

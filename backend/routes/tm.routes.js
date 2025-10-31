@@ -59,14 +59,30 @@ tmRouter.post("/", async (req, res) => {
 
   // Tenta atualizar se já existe exatamente esse par (frase + idiomas)
   const row = await get(
-    "SELECT * FROM tm_entries WHERE source_norm = ? AND COALESCE(src_lang,'') = ? AND COALESCE(tgt_lang,'') = ?",
-    [source_norm, src_lang, tgt_lang]
+    `SELECT * FROM tm_entries
+       WHERE source_norm = ?
+         AND COALESCE(NULLIF(src_lang, ''), ?) = ?
+         AND COALESCE(NULLIF(tgt_lang, ''), ?) = ?`,
+    [source_norm, src_lang, src_lang, tgt_lang, tgt_lang]
   );
 
   if (row) {
     await run(
-      "UPDATE tm_entries SET target_text=?, quality=?, uses=uses+1, last_used_at=CURRENT_TIMESTAMP WHERE id=?",
-      [target_text, Number(quality) || 0.9, row.id]
+      `UPDATE tm_entries
+         SET target_text=?,
+             quality=?,
+             uses=uses+1,
+             src_lang = CASE WHEN NULLIF(src_lang, '') IS NULL THEN ? ELSE src_lang END,
+             tgt_lang = CASE WHEN NULLIF(tgt_lang, '') IS NULL THEN ? ELSE tgt_lang END,
+             last_used_at=CURRENT_TIMESTAMP
+       WHERE id=?`,
+      [
+        target_text,
+        Number(quality) || 0.9,
+        src_lang,
+        tgt_lang,
+        row.id,
+      ]
     );
     const updated = await get("SELECT * FROM tm_entries WHERE id=?", [row.id]);
     return res.json({ ok: true, row: updated, upsert: "update" });
