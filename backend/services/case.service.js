@@ -22,9 +22,18 @@ function isTitleCase(s) {
 
 // Title Case simples (se quiser ignorar “de/da/do…”, avisa que mando com stopwords)
 export function toTitleCaseAll(s) {
-  return String(s || "")
-    .toLowerCase()
-    .replace(/\b\p{L}[\p{L}\p{M}]*/gu, (w) => w[0].toUpperCase() + w.slice(1))
+  const lower = String(s || "").toLocaleLowerCase()
+  const tokens = tokenizeUnicode(lower)
+  return tokens
+    .map((token) => {
+      if (/^\p{L}[\p{L}\p{M}]*$/u.test(token)) {
+        const first = token.slice(0, 1).toLocaleUpperCase()
+        const rest = token.slice(1)
+        return first + rest
+      }
+      return token
+    })
+    .join("")
 }
 
 export function applyCaseLike(srcSample, target) {
@@ -74,10 +83,10 @@ export function extractAllCapsTerms(original) {
   // Pega tokens com 2+ letras 100% maiúsculas (ignora números/pontuação)
   // Ex.: "He is very LUCKY and HANDSOME." -> ["LUCKY","HANDSOME"]
   const set = new Set()
-  const re = /\b[\p{Lu}]{2,}\b/gu // Apenas letras maiúsculas (Unicode)
+  const re = /(?<![\p{L}\p{M}])([\p{Lu}][\p{Lu}\p{M}]{1,})(?![\p{L}\p{M}])/gu
   const s = String(original || "")
   let m
-  while ((m = re.exec(s))) set.add(m[0])
+  while ((m = re.exec(s))) set.add(m[1])
   return Array.from(set)
 }
 
