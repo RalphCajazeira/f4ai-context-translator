@@ -12,13 +12,13 @@
       <div class="langs">
         <select id="src">
           <option value="en" selected>Inglês</option>
-          <option value="pt">Português</option>
+          <option value="pt-BR">Português Br</option>
           <option value="es">Espanhol</option>
           <option value="fr">Francês</option>
         </select>
         <span>→</span>
         <select id="tgt">
-          <option value="pt" selected>Português</option>
+          <option value="pt-BR" selected>Português Br</option>
           <option value="en">Inglês</option>
           <option value="es">Espanhol</option>
           <option value="fr">Francês</option>
@@ -31,15 +31,24 @@
       <!-- Coluna 1 -->
       <section class="panel">
         <h3>Texto original</h3>
-        <textarea id="source" placeholder="Cole aqui o texto do mod..."></textarea>
+        <textarea
+          id="source"
+          placeholder="Cole aqui o texto do mod..."
+        ></textarea>
         <div class="actions">
-          <button id="btnTranslate" title="Traduzir (gera log)">Traduzir</button>
-          <button id="btnPasteTranslate" title="Colar e traduzir">📥 Trad.</button>
+          <button id="btnTranslate" title="Traduzir (gera log)">
+            Traduzir
+          </button>
+          <button id="btnPasteTranslate" title="Colar e traduzir">
+            📥 Trad.
+          </button>
           <label class="keep-lines">
             <input type="checkbox" id="preserveLines" checked />
             Preservar quebras de linha
           </label>
-          <button id="btnApprove" title="Salvar par na TM (sem log)">Aprovar na Memória</button>
+          <button id="btnApprove" title="Salvar par na TM (sem log)">
+            Aprovar na Memória
+          </button>
         </div>
       </section>
 
@@ -48,33 +57,64 @@
         <h3>Tradução</h3>
 
         <!-- ÚNICA CAIXA DE EDIÇÃO -->
-        <div id="editor" class="editor" contenteditable="true" spellcheck="false" aria-label="Tradução (editor)"></div>
+        <div
+          id="editor"
+          class="editor"
+          contenteditable="true"
+          spellcheck="false"
+          aria-label="Tradução (editor)"
+        ></div>
 
         <div class="preview-wrap">
           <div class="preview-title">
             <span>Versão anterior</span>
             <button id="toggleOld" class="btn-mini">Exibir</button>
           </div>
-          <div id="targetPreview" class="preview" style="display:none"></div>
+          <div id="targetPreview" class="preview" style="display: none"></div>
         </div>
 
         <div class="toolbar">
           <button title="Copiar texto" id="btnCopy">📋</button>
           <button title="MAIÚSCULO" id="btnUpper">🅰</button>
           <button title="minúsculo" id="btnLower">🔡</button>
-          <button title="Primeira letra de cada palavra" id="btnCapWords">🅿</button>
-          <button title="Primeira letra da frase" id="btnCapSentence">📝</button>
-          <button title="Comparar alterações" id="btnCompare" aria-pressed="false">🔍 Comparar: OFF</button>
+          <button title="Primeira letra de cada palavra" id="btnCapWords">
+            🅿
+          </button>
+          <button title="Primeira letra da frase" id="btnCapSentence">
+            📝
+          </button>
+          <button
+            title="Comparar alterações"
+            id="btnCompare"
+            aria-pressed="false"
+          >
+            🔍 Comparar: OFF
+          </button>
         </div>
 
-        <div class="cap-options" style="display:flex;gap:.5rem;flex-wrap:wrap">
-          <label>Ignorar palavras menores que
-            <input id="capMinLen" type="number" value="2" min="0" style="width:4rem" /> letra(s)
+        <div
+          class="cap-options"
+          style="display: flex; gap: 0.5rem; flex-wrap: wrap"
+        >
+          <label
+            >Ignorar palavras menores que
+            <input
+              id="capMinLen"
+              type="number"
+              value="2"
+              min="0"
+              style="width: 4rem"
+            />
+            letra(s)
           </label>
-          <label style="flex:1 1 380px">Ignorar as palavras
-            <input id="capIgnore" type="text"
+          <label style="flex: 1 1 380px"
+            >Ignorar as palavras
+            <input
+              id="capIgnore"
+              type="text"
               value="a,o,as,os,de,do,da,dos,das,e,ou,para,por,no,na,nos,nas"
-              placeholder="Separadas por vírgula" />
+              placeholder="Separadas por vírgula"
+            />
           </label>
         </div>
 
@@ -88,7 +128,15 @@
       <aside class="panel side" id="sidePanel">
         <div class="side-header">
           <h3>Ferramentas</h3>
-          <button id="toggleSide" class="icon-btn" aria-expanded="true" aria-controls="sideBody" title="Exibir/ocultar ferramentas">👁</button>
+          <button
+            id="toggleSide"
+            class="icon-btn"
+            aria-expanded="true"
+            aria-controls="sideBody"
+            title="Exibir/ocultar ferramentas"
+          >
+            👁
+          </button>
         </div>
 
         <div id="sideBody">
@@ -100,7 +148,11 @@
           <!-- ABA: GLOSSÁRIO (em CARDS) -->
           <div class="tab-content active" id="tab-glossary">
             <h3>Glossário (dicionário próprio)</h3>
-            <p>Use para forçar traduções específicas e dar contexto à IA. Ex.: <b>Trashcan Carla → Carla-Lixeira</b> (Notas: "NPC comerciante itinerante")</p>
+            <p>
+              Use para forçar traduções específicas e dar contexto à IA. Ex.:
+              <b>Trashcan Carla → Carla-Lixeira</b> (Notas: "NPC comerciante
+              itinerante")
+            </p>
 
             <form id="glossForm" class="row gap">
               <input name="term_source" placeholder="termo EN" required />
@@ -118,8 +170,17 @@
           <div class="tab-content" id="tab-blacklist">
             <h3>Lista Negra (não traduzir)</h3>
             <form id="blackForm" class="row gap">
-              <input type="text" name="term" placeholder="Termo ex.: Pip-Boy" required />
-              <input type="text" name="notes" placeholder="Observações (opcional)" />
+              <input
+                type="text"
+                name="term"
+                placeholder="Termo ex.: Pip-Boy"
+                required
+              />
+              <input
+                type="text"
+                name="notes"
+                placeholder="Observações (opcional)"
+              />
               <button class="btn btn-primary" type="submit">Adicionar</button>
             </form>
 
@@ -132,7 +193,9 @@
                     <th></th>
                   </tr>
                 </thead>
-                <tbody><!-- via JS --></tbody>
+                <tbody>
+                  <!-- via JS -->
+                </tbody>
               </table>
             </div>
           </div>
@@ -153,7 +216,10 @@
     </main>
 
     <footer>
-      <small>Backends: <b>Ollama LLM</b> (context-aware) • Fallback: <b>M2M100</b></small>
+      <small
+        >Backends: <b>Ollama LLM</b> (context-aware) • Fallback:
+        <b>M2M100</b></small
+      >
     </footer>
 
     <!-- Scripts -->
@@ -162,8 +228,8 @@
     <script src="/blacklist.js"></script>
     <script>
       // inicializações das UIs em abas
-      if (window.initGlossaryUI) window.initGlossaryUI();
-      if (window.initBlacklistUI) window.initBlacklistUI();
+      if (window.initGlossaryUI) window.initGlossaryUI()
+      if (window.initBlacklistUI) window.initBlacklistUI()
     </script>
   </body>
 </html>

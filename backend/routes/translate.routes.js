@@ -43,8 +43,8 @@ function tokenCosine(a, b) {
     nb = 0
   for (let i = 0; i < va.length; i++) {
     dot += va[i] * vb[i]
-    na += va[i] * va[i]
-    nb += vb[i] * vb[i]
+    na += va[i] ** 2
+    nb += vb[i] ** 2
   }
   return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1)
 }
@@ -52,12 +52,10 @@ function tokenCosine(a, b) {
 /** Ajustes ON/OFF (título e "When ON/OFF") */
 function adaptToggleOnOff(fromSourceNorm, fromTarget, toOriginal) {
   if (!fromSourceNorm || !fromTarget || !toOriginal) return null
-
   let out = String(fromTarget)
   const srcNew = String(toOriginal)
-
-  const PT_ON = "LIGADO"
-  const PT_OFF = "DESLIGADO"
+  const PT_ON = "LIGADO",
+    PT_OFF = "DESLIGADO"
 
   // 1) Título ": ON|OFF"
   const headerNew = srcNew.match(/:\s*(ON|OFF)\b/i)?.[1]?.toUpperCase()
@@ -69,7 +67,7 @@ function adaptToggleOnOff(fromSourceNorm, fromTarget, toOriginal) {
     )
   }
 
-  // 2) "When ON|OFF"
+  // 2) "Quando ON|OFF"
   const whenMatches = [...srcNew.matchAll(/\bWhen\s+(ON|OFF)\b/gi)]
   if (whenMatches.length > 0) {
     let idx = 0
@@ -82,7 +80,6 @@ function adaptToggleOnOff(fromSourceNorm, fromTarget, toOriginal) {
         return `${q} ${desired}`
       }
     )
-
     const needOn = whenMatches.some((m) => m[1].toUpperCase() === "ON")
     const needOff = whenMatches.some((m) => m[1].toUpperCase() === "OFF")
     if (!/\bQuando\s+(ATIVADO|DESATIVADO|LIGADO|DESLIGADO)\b/i.test(out)) {
@@ -93,16 +90,23 @@ function adaptToggleOnOff(fromSourceNorm, fromTarget, toOriginal) {
 
   // 3) Padroniza
   out = out.replace(/\bATIVADO\b/gi, PT_ON).replace(/\bDESATIVADO\b/gi, PT_OFF)
-
   return out
 }
 
-/** Normalizador de strings (anti-eco) */
+/** Normalizador simples */
 const normalize = (s = "") =>
   String(s).trim().replace(/\s+/g, " ").toLowerCase()
 
-/** Tradução linha a linha com limpeza anti-eco do LLM */
-async function translatePreservingLines({ text, src, tgt, shots, glossary }) {
+/** Tradução linha a linha (com contexto opcional) */
+async function translatePreservingLines({
+  text,
+  src,
+  tgt,
+  shots,
+  glossary,
+  contextBlock = "",
+  noTranslate = [],
+}) {
   const lines = String(text || "").split(/\r?\n/)
   const out = []
   for (const ln of lines) {
@@ -111,7 +115,10 @@ async function translatePreservingLines({ text, src, tgt, shots, glossary }) {
       continue
     }
 
-    const promptLine = `Traduza LITERALMENTE para ${tgt}. Responda só a tradução desta linha, sem explicações, sem aspas:\n${ln}`
+    const promptLine =
+      (contextBlock ? contextBlock + "\n\n" : "") +
+      `Traduza LITERALMENTE para ${tgt}. Responda só a tradução desta linha, sem explicações, sem aspas:\n${ln}`
+
     try {
       let clean = await translateWithContext({
         text: promptLine,
@@ -119,6 +126,7 @@ async function translatePreservingLines({ text, src, tgt, shots, glossary }) {
         tgt,
         shots,
         glossary,
+        noTranslate,
       })
       clean = String(clean || "")
         .replace(/^\s*(?:traduza\s+apenas[^\n:]*:\s*)/i, "")
@@ -134,12 +142,10 @@ async function translatePreservingLines({ text, src, tgt, shots, glossary }) {
         const forced = await forceTranslateWithOllama(ln, src, tgt)
         if (normalize(forced) !== normalize(ln)) clean = forced
       }
-
       out.push(clean)
     } catch {
       try {
-        const forced = await forceTranslateWithOllama(ln, src, tgt)
-        out.push(forced || ln)
+        out.push((await forceTranslateWithOllama(ln, src, tgt)) || ln)
       } catch {
         out.push(ln)
       }
@@ -148,7 +154,75 @@ async function translatePreservingLines({ text, src, tgt, shots, glossary }) {
   return out.join("\n")
 }
 
-/** Reforça termos ALL-CAPS traduzindo isoladamente (com anti-eco) */
+/* --------- Glossário (troca determinística pós-tradução) ---------- */
+const reEscape = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
+function buildWBRegex(terms = []) {
+  const parts = [
+    ...new Set(terms.map((t) => String(t || "").trim()).filter(Boolean)),
+  ]
+    .sort((a, b) => b.length - a.length)
+    .map(reEscape)
+  if (!parts.length) return null
+  return new RegExp(`(?<![\\w-])(?:${parts.join("|")})(?![\\w-])`, "gi")
+}
+
+function pickBlacklistMatches(text, rows) {
+  const terms = (rows || []).map((r) => r.term).filter(Boolean)
+  const re = buildWBRegex(terms)
+  if (!re) return []
+  const found = new Set()
+  String(text).replace(re, (m) => {
+    found.add(m.toLowerCase())
+    return m
+  })
+  return terms.filter((t) => found.has(String(t).toLowerCase()))
+}
+
+function pickGlossaryMatches(text, rows) {
+  const terms = (rows || []).map((r) => r.term_source).filter(Boolean)
+  const re = buildWBRegex(terms)
+  if (!re) return []
+  const seen = new Set()
+  const byKey = new Map(
+    (rows || []).map((r) => [String(r.term_source).toLowerCase(), r])
+  )
+  String(text).replace(re, (m) => {
+    seen.add(m.toLowerCase())
+    return m
+  })
+  return [...seen].map((k) => byKey.get(k)).filter(Boolean)
+}
+
+function buildGlossPatterns(glossary = [], noTranslate = []) {
+  const blocked = new Set(
+    (noTranslate || []).map((t) => String(t).toLowerCase())
+  )
+  const rows = (glossary || [])
+    .filter((g) => g && g.term_source && g.term_target && (g.approved ?? 1))
+    .filter((g) => !blocked.has(String(g.term_source).toLowerCase()))
+    .sort((a, b) => b.term_source.length - a.term_source.length)
+  return rows.map((g) => {
+    const pat = `(?<![\\w-])${reEscape(g.term_source)}(?![\\w-])`
+    return { re: new RegExp(pat, "gi"), target: g.term_target }
+  })
+}
+
+function applyGlossaryHardReplace(
+  sourceText,
+  translatedText,
+  glossary,
+  noTranslate
+) {
+  if (!translatedText) return translatedText
+  const patterns = buildGlossPatterns(glossary, noTranslate)
+  if (!patterns.length) return translatedText
+  let out = String(translatedText)
+  for (const { re, target } of patterns) out = out.replace(re, target)
+  return out
+}
+
+/** Reforça termos ALL-CAPS isoladamente */
 async function enforceAllCapsTerms({
   original,
   best,
@@ -161,7 +235,7 @@ async function enforceAllCapsTerms({
   const caps = extractAllCapsTerms(original)
   if (!caps.length || !out) return out
 
-  const uniqueCaps = Array.from(new Set(caps))
+  const uniqueCaps = Array.from(new Set(cpsCaps(caps)))
   for (const term of uniqueCaps) {
     let t = ""
     try {
@@ -181,44 +255,42 @@ async function enforceAllCapsTerms({
       t = ""
     }
     if (!t) continue
-    const projected = applyCaseLike(term, t) // ALL-CAPS → upper
+    const projected = applyCaseLike(term, t)
     out = replaceWordUnicode(out, t, projected)
   }
   return out
 }
-
-/* --------- Glossário (troca determinística pós-tradução) ---------- */
-const reEscape = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-
-function buildGlossPatterns(glossary = [], noTranslate = []) {
-  const blocked = new Set(
-    (noTranslate || []).map((t) => String(t).toLowerCase())
-  )
-  const rows = (glossary || [])
-    .filter((g) => g && g.term_source && g.term_target && (g.approved ?? 1))
-    .filter((g) => !blocked.has(String(g.term_source).toLowerCase()))
-    .sort((a, b) => b.term_source.length - a.term_source.length)
-
-  return rows.map((g) => {
-    const pat = `(?<![\\w-])${reEscape(g.term_source)}(?![\\w-])`
-    return { re: new RegExp(pat, "gi"), target: g.term_target }
-  })
+function cpsCaps(arr) {
+  const set = new Set()
+  for (const w of arr) {
+    if (/\b[\p{Lu}]{2,}\b/u.test(w)) set.add(w)
+  }
+  return Array.from(set)
 }
 
-function applyGlossaryHardReplace(
-  sourceText,
-  translatedText,
-  glossary,
-  noTranslate
-) {
-  if (!translatedText) return translatedText
-  const patterns = buildGlossPatterns(glossary, noTranslate)
-  if (!patterns.length) return translatedText
-  let out = String(translatedText)
-  for (const { re, target } of patterns) {
-    out = out.replace(re, target)
+/* ---------- Contexto (Glossário + Blacklist) ---------- */
+function buildContextBlock(matchedGlossary = [], matchedBlacklistRows = []) {
+  const lines = []
+  if (matchedBlacklistRows.length) {
+    lines.push("### CONTEXTO — BLACKLIST (não traduzir):")
+    for (const b of matchedBlacklistRows) {
+      const term = b.term
+      const notes = (b.notes || "").trim()
+      lines.push(`- ${term}${notes ? ` — ${notes}` : ""}`)
+    }
+    lines.push("")
   }
-  return out
+  if (matchedGlossary.length) {
+    lines.push("### CONTEXTO — GLOSSÁRIO (usar tradução fixa):")
+    for (const g of matchedGlossary) {
+      const src = g.term_source
+      const tgt = g.term_target
+      const notes = (g.notes || "").trim()
+      lines.push(`- ${src} → ${tgt}${notes ? ` — ${notes}` : ""}`)
+    }
+    lines.push("")
+  }
+  return lines.length ? lines.join("\n") : ""
 }
 
 /* ----------------------- Rota Principal ----------------------- */
@@ -234,20 +306,79 @@ translateRouter.post("/", async (req, res) => {
 
   if (!text) return res.status(400).json({ error: "text é obrigatório" })
 
-  // Busca paralela para reduzir latência total
-  const [shots, glossary, suggestions, tmPairs, blacklistRows] =
+  const [shots, glossaryRows, suggestions, tmPairs, blacklistRows] =
     await Promise.all([
       topKExamples(text, 5),
       getGlossary(),
       getSuggestions(text, src, tgt, 8),
       all("SELECT source_norm, target_text FROM tm_entries LIMIT 500"),
-      all("SELECT term FROM blacklist"),
+      all("SELECT term, notes FROM blacklist"),
     ])
 
-  const noTranslate = (blacklistRows || []).map((r) => r.term).filter(Boolean)
+  // Itens encontrados no texto
+  const matchedGlossary = pickGlossaryMatches(text, glossaryRows)
+  const matchedNoTranslate = pickBlacklistMatches(text, blacklistRows)
+
+  // Mapeia termos de blacklist → {term, notes}
+  const byTerm = new Map(
+    (blacklistRows || []).map((r) => [String(r.term).toLowerCase(), r])
+  )
+  const matchedBlacklistRows = matchedNoTranslate
+    .map((t) => byTerm.get(String(t).toLowerCase()))
+    .filter(Boolean)
+
+  // --- Novo: curto-circuito quando o texto é apenas termos da blacklist ---
+  const onlyBlacklist = (() => {
+    if (!matchedNoTranslate.length) return false
+    const re = buildWBRegex(matchedNoTranslate)
+    // remove os termos da blacklist, depois remove sinais/espacos; se nada sobrar → só blacklist
+    const residual = String(text)
+      .replace(re, "")
+      .replace(/[^\p{L}\p{N}]+/gu, "")
+      .trim()
+    return residual.length === 0
+  })()
+  if (onlyBlacklist) {
+    if (process.env.MT_LOG !== "0") {
+      console.log(
+        "[translate] Texto contém apenas termos da blacklist — IA não será chamada."
+      )
+    }
+    return res.json({
+      best: text,
+      candidates: [],
+      matched: {
+        glossary: matchedGlossary,
+        blacklist: matchedBlacklistRows.map(({ term, notes }) => ({
+          term,
+          notes,
+        })),
+      },
+    })
+  }
+
+  // Bloco de contexto (somente quando não é “apenas blacklist”)
+  const contextBlock = buildContextBlock(matchedGlossary, matchedBlacklistRows)
+
+  // Logs
+  if (process.env.MT_LOG !== "0") {
+    console.log("\n=== [translate] Requisição recebida ===")
+    console.log("src → tgt:", src, "→", tgt)
+    console.log("Texto original:\n" + text)
+    console.log(
+      "Glossário detectado:",
+      matchedGlossary.map((g) => g.term_source)
+    )
+    console.log(
+      "Blacklist detectada:",
+      matchedBlacklistRows.map((b) => b.term)
+    )
+    if (contextBlock)
+      console.log("[translate] Contexto enviado (preview):\n" + contextBlock)
+  }
 
   try {
-    // 1) PRIORIZE TM com critérios mais rígidos
+    // 1) TM primeiro
     const srcNorm = norm(text)
     let best = ""
 
@@ -257,83 +388,120 @@ translateRouter.post("/", async (req, res) => {
       String(process.env.TM_FUZZY_REQUIRE_PATCH ?? "true").toLowerCase() ===
       "true"
 
-    // 1a) Exato
     const tmExact = (tmPairs || []).find((p) => p.source_norm === srcNorm)
     if (tmExact) {
       best = applyCaseLike(text, tmExact.target_text)
+      if (process.env.MT_LOG !== "0")
+        console.log("[translate] Hit TM exata. Pulando chamada à IA.")
     } else {
-      // 1b) Fuzzy + patch de ON/OFF
       let top = null
       for (const p of tmPairs || []) {
         const sc = tokenCosine(srcNorm, p.source_norm || "")
         if (!top || sc > top.sc) top = { ...p, sc }
       }
-
       if (top) {
-        const lenA = srcNorm.length
-        const lenB = (top.source_norm || "").length
+        const lenA = srcNorm.length,
+          lenB = (top.source_norm || "").length
         const lenOk =
           Math.abs(lenA - lenB) / Math.max(1, Math.max(lenA, lenB)) <=
           MAX_LEN_DELTA
-
         const patched = adaptToggleOnOff(top.source_norm, top.target_text, text)
         const changed = patched && patched !== top.target_text
-
         if (
           top.sc >= FUZZY_PROMOTE_MIN &&
           lenOk &&
           (!REQUIRE_PATCH || changed)
         ) {
           best = applyCaseLike(text, patched || top.target_text)
+          if (process.env.MT_LOG !== "0") {
+            console.log(
+              "[translate] Promovido via TM fuzzy (score:",
+              top.sc.toFixed(3) + ")"
+            )
+          }
         }
       }
     }
 
-    // 1c) Se ainda não tem best, chama MT/LLM
+    // 2) Chama MT só se necessário (passando listas filtradas + contexto)
     const isSingleLine = !/\r?\n/.test(text)
     const words = String(text).trim().split(/\s+/).filter(Boolean)
     const isVeryShort = text.length <= 32 || words.length <= 4
 
     if (!best) {
+      if (process.env.MT_LOG !== "0") {
+        console.log(
+          "[translate] Chamando IA… (preserveLines:",
+          !!preserveLines,
+          ", veryShort:",
+          !!isVeryShort,
+          ")"
+        )
+      }
+      const contextualText = contextBlock ? `${contextBlock}\n\n${text}` : text
+
       best =
         isSingleLine && isVeryShort
-          ? await translateWithContext({ text, src, tgt, shots, glossary })
+          ? await translateWithContext({
+              text: contextualText,
+              src,
+              tgt,
+              shots,
+              glossary: matchedGlossary,
+              noTranslate: matchedNoTranslate,
+            })
           : preserveLines
-          ? await translatePreservingLines({ text, src, tgt, shots, glossary })
-          : await translateWithContext({ text, src, tgt, shots, glossary })
+          ? await translatePreservingLines({
+              text,
+              src,
+              tgt,
+              shots,
+              glossary: matchedGlossary,
+              contextBlock,
+              noTranslate: matchedNoTranslate,
+            })
+          : await translateWithContext({
+              text: contextualText,
+              src,
+              tgt,
+              shots,
+              glossary: matchedGlossary,
+              noTranslate: matchedNoTranslate,
+            })
     }
 
-    // 1d) Padroniza LIGADO/DESLIGADO e remove duplicatas se houver
+    // 3) Padronizações e substituições determinísticas
     best = best
       .replace(/\bATIVADO\b/gi, "LIGADO")
       .replace(/\bDESATIVADO\b/gi, "DESLIGADO")
       .replace(/\b(LIGADO)\s+(ATIVADO|LIGADO)\b/gi, "LIGADO")
       .replace(/\b(DESLIGADO)\s+(DESATIVADO|DESLIGADO)\b/gi, "DESLIGADO")
 
-    // 1e) APLICA GLOSSÁRIO de forma determinística (pós-tradução)
-    best = applyGlossaryHardReplace(text, best, glossary, noTranslate)
+    best = applyGlossaryHardReplace(
+      text,
+      best,
+      matchedGlossary,
+      matchedNoTranslate
+    )
 
-    /* 2) PROJEÇÃO de caixa por glossário + TM (consistência visual) */
-    const pairs = [...glossary, ...tmPairs]
+    // 4) Projeção de caixa + ALL-CAPS
+    const pairs = [...matchedGlossary, ...tmPairs]
     best = projectGlossaryCaseInSentence(text, best, pairs)
-
-    /* 3) Reforço ALL-CAPS (mesmo sem TM/glossário) */
     best = await enforceAllCapsTerms({
       original: text,
       best,
       src,
       tgt,
       shots,
-      glossary,
+      glossary: matchedGlossary,
     })
 
-    /* 4) Candidatos (sugestões) com mesma projeção de caixa */
+    // 5) Sugestões (com projeção)
     const candidates = (suggestions || []).map((c) => ({
       ...c,
       text: projectGlossaryCaseInSentence(text, c.text, pairs),
     }))
 
-    /* 5) Log opcional */
     if (log) {
       await run(
         "INSERT INTO translation_logs (source_text, target_text, origin) VALUES (?, ?, ?)",
@@ -341,9 +509,39 @@ translateRouter.post("/", async (req, res) => {
       )
     }
 
-    return res.json({ best, candidates })
+    if (process.env.MT_LOG !== "0") {
+      console.log("=== [translate] Resposta final ===")
+      console.log("best:\n" + best)
+      console.log(
+        "candidates:",
+        candidates.map((c) => c.text)
+      )
+      console.log(
+        "matched.glossary:",
+        matchedGlossary.map((g) => g.term_source)
+      )
+      console.log(
+        "matched.blacklist:",
+        matchedBlacklistRows.map((b) => b.term)
+      )
+      console.log("===================================\n")
+    }
+
+    return res.json({
+      best,
+      candidates,
+      matched: {
+        glossary: matchedGlossary,
+        blacklist: matchedBlacklistRows.map(({ term, notes }) => ({
+          term,
+          notes,
+        })),
+      },
+    })
   } catch (err) {
-    // Fallback: devolve melhor candidato disponível
+    if (process.env.MT_LOG !== "0") {
+      console.error("[translate] ERRO durante tradução:", err?.message || err)
+    }
     const best = (suggestions && suggestions[0]?.text) || ""
     if (log) {
       await run(
@@ -369,10 +567,8 @@ translateRouter.post("/approve", async (req, res) => {
       .json({ error: "source_text e target_text são obrigatórios" })
   }
 
-  // 1) grava/atualiza na TM (upsert)
   await recordApproval(source_text, target_text)
 
-  // 2) sincroniza com o log e captura o id removido
   let removedLogId = null
   try {
     if (removeFromLog) {
@@ -393,10 +589,7 @@ translateRouter.post("/approve", async (req, res) => {
         }
       }
     }
-  } catch (_) {
-    // não falha a aprovação se não achar log compatível
-  }
-
+  } catch (_) {}
   return res.json({ ok: true, removedLogId })
 })
 

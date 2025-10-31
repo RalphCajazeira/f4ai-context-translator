@@ -3,12 +3,15 @@ import dotenv from "dotenv"
 dotenv.config()
 
 // ==== ENV / Defaults =========================================================
-const MT_BACKEND = process.env.MT_BACKEND || "ollama"
-const MT_URL = process.env.MT_URL || "http://localhost:8001/llm-translate"
-const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434"
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "qwen2.5:7b-instruct"
-const MT_ENABLED =
+export const MT_BACKEND = process.env.MT_BACKEND || "ollama"
+export const MT_URL =
+  process.env.MT_URL || "http://localhost:8001/llm-translate"
+export const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434"
+export const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "qwen2.5:7b-instruct"
+export const MT_ENABLED =
   String(process.env.MT_ENABLED || "true").toLowerCase() === "true"
+
+const MT_LOG_ENABLED = process.env.MT_LOG !== "0" // 1 ou 2 = ligado
 
 // ==== Helpers ================================================================
 function normalize(s) {
@@ -17,30 +20,26 @@ function normalize(s) {
     .replace(/\s+/g, " ")
     .toLowerCase()
 }
-function isShortText(s) {
-  const t = String(s || "").trim()
-  const words = t.split(/\s+/).filter(Boolean)
-  return t.length <= 32 || words.length <= 4
-}
-const reEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
-// --- Blacklist: compila regex único (ordenado por tamanho) ---
-function buildNoTranslateRegex(terms = []) {
-  const clean = (terms || []).map((t) => String(t || "").trim()).filter(Boolean)
-  if (!clean.length) return null
-  const parts = [...new Set(clean)]
+function reEscape(s) {
+  return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+// palavra OU hífen como “borda” (ex.: não casa dentro de otherWords)
+function buildWBRegex(terms = []) {
+  const parts = [
+    ...new Set(terms.map((t) => String(t || "").trim()).filter(Boolean)),
+  ]
     .sort((a, b) => b.length - a.length)
     .map(reEscape)
+  if (!parts.length) return null
   return new RegExp(`(?<![\\w-])(?:${parts.join("|")})(?![\\w-])`, "gi")
 }
+
 const TOKEN_RE = /__NT(\d+)__/g
+
 function protectNoTranslate(text, regex) {
-  if (!regex) return { text, originals: null }
-  if (!regex.test(text)) {
-    regex.lastIndex = 0
-    return { text, originals: null }
-  }
-  regex.lastIndex = 0
+  if (!regex) return { text: String(text), originals: [] }
   const originals = []
   let id = 0
   const masked = String(text).replace(regex, (m) => {
@@ -50,98 +49,155 @@ function protectNoTranslate(text, regex) {
   })
   return { text: masked, originals }
 }
+
 function restoreNoTranslate(text, originals) {
-  if (!originals) return text
+  if (!originals || !originals.length) return String(text)
   return String(text).replace(TOKEN_RE, (_, n) => originals[Number(n)] ?? _)
 }
 
 // ==== Ollama fallback ========================================================
 export async function forceTranslateWithOllama(text, src = "en", tgt = "pt") {
-  const prompt = `Traduza LITERALMENTE do ${src} para ${tgt}.
-Regras:
-- Responda SOMENTE a tradução (sem comentários, sem aspas, sem repetir o original).
-- Preserve quebras de linha e pontuação.
-- Se for uma única palavra, traduza a palavra (não devolva o original), exceto nomes próprios ou acrônimos universalmente mantidos.
+  const prompt = [
+    `Traduza o seguinte texto de ${src} para ${tgt}.`,
+    `Responda apenas com a tradução, sem explicações, sem aspas:`,
+    ``,
+    String(text),
+  ].join("\n")
 
-Exemplos:
-EN: Hello
-PT-BR: Olá
+  const body = {
+    model: OLLAMA_MODEL,
+    prompt,
+    stream: false,
+  }
 
-EN: Hello world
-PT-BR: Olá, mundo
+  if (MT_LOG_ENABLED) {
+    console.log("[mt-client/ollama] → prompt (preview):", prompt.slice(0, 300))
+  }
 
-EN: ${text}
-PT-BR:`
   const r = await fetch(`${OLLAMA_URL}/api/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: OLLAMA_MODEL,
-      prompt,
-      options: { temperature: 0 },
-      stream: false,
-    }),
+    body: JSON.stringify(body),
   })
-  if (!r.ok) {
-    const body = await r.text().catch(() => "")
-    throw new Error(`Ollama fallback error ${r.status}: ${body}`)
+  if (!r.ok) throw new Error(`ollama ${r.status}`)
+
+  const j = await r.json()
+  const out = String(j?.response || "").trim()
+
+  if (MT_LOG_ENABLED) {
+    console.log("[mt-client/ollama] ← resposta (preview):", out.slice(0, 300))
   }
-  const data = await r.json()
-  const out = data && data.response ? String(data.response).trim() : ""
-  if (!out) throw new Error("Ollama fallback retornou vazio")
+
   return out
 }
 
-// ==== MT service (FastAPI /llm-translate) ===================================
+// ==== MT Service (FastAPI/HTTP) =============================================
 async function callMtService({ text, src, tgt, shots = [], glossary = [] }) {
+  const payload = { text, src, tgt, shots, glossary }
+
+  if (MT_LOG_ENABLED) {
+    console.log("[mt-client/http] → Enviando para IA", {
+      src,
+      tgt,
+      textPreview: String(text).slice(0, 300),
+      shotsCount: Array.isArray(shots) ? shots.length : 0,
+      glossaryCount: Array.isArray(glossary) ? glossary.length : 0,
+    })
+  }
+
   const r = await fetch(MT_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, src, tgt, shots, glossary }),
+    body: JSON.stringify(payload),
   })
   if (!r.ok) throw new Error(`MT service ${r.status}`)
+
   const j = await r.json()
-  const best = j && typeof j.text === "string" ? j.text : ""
-  return best || ""
+  const best = (j && typeof j.text === "string" ? j.text : "").trim()
+
+  if (MT_LOG_ENABLED) {
+    console.log("[mt-client/http] ← Resposta IA (preview):", best.slice(0, 300))
+  }
+
+  return best
 }
 
-// ==== Principal: agora com blacklist (noTranslate) ===========================
+// ==== API Principal ==========================================================
+/**
+ * Tradução com proteção de blacklist e suporte a glossário/tiros (shots).
+ * - Usa MT_URL por padrão; se falhar, cai no Ollama local.
+ * - Respeita "noTranslate" via masking/restore.
+ */
 export async function translateWithContext({
   text,
   src = process.env.MT_SRC || "en",
   tgt = process.env.MT_TGT || "pt",
   shots = [],
   glossary = [],
-  noTranslate = [], // <<--- NOVO: termos para NÃO traduzir
+  noTranslate = [],
   backend = MT_BACKEND,
 }) {
-  if (!MT_ENABLED) return text
+  if (!MT_ENABLED) return String(text)
 
-  // 0) protege blacklist
-  const regex = buildNoTranslateRegex(noTranslate)
+  // 0) Protege blacklist
+  const regex = buildWBRegex(noTranslate)
   const { text: masked, originals } = protectNoTranslate(String(text), regex)
 
-  // 1) tenta MT service
-  try {
-    let mtOut = await callMtService({ text: masked, src, tgt, shots, glossary })
-    if (isShortText(masked) && normalize(mtOut) === normalize(masked)) {
-      try {
-        const forced = await forceTranslateWithOllama(masked, src, tgt)
-        if (normalize(forced) !== normalize(masked)) mtOut = forced
-      } catch (e) {
-        console.warn("[mt-client] Fallback Ollama falhou:", e.message)
-      }
+  if (MT_LOG_ENABLED) {
+    console.log("[mt-client] noTranslate termos:", (noTranslate || []).length)
+    console.log("[mt-client] regex NT:", regex ? String(regex) : "(sem regex)")
+    if (masked !== text) {
+      console.log(
+        "[mt-client] Texto mascarado (preview):",
+        masked.slice(0, 300)
+      )
     }
-    // 2) restaura blacklist
-    return restoreNoTranslate(mtOut || masked, originals)
+  }
+
+  // 1) Seleciona backend
+  const useHttp = String(backend || "").toLowerCase() !== "ollama-direct"
+
+  try {
+    let mtOut = ""
+    if (useHttp) {
+      mtOut = await callMtService({ text: masked, src, tgt, shots, glossary })
+    } else {
+      // “ollama-direct”: traduz sem serviço HTTP intermediário
+      mtOut = await forceTranslateWithOllama(masked, src, tgt)
+    }
+
+    // 2) Restaura blacklist
+    const restored = restoreNoTranslate(mtOut || masked, originals)
+
+    if (MT_LOG_ENABLED) {
+      console.log(
+        "[mt-client] Texto após restauração (preview):",
+        String(restored).slice(0, 300)
+      )
+    }
+
+    // 3) Anti-eco básico (se a saída == entrada mascarada, tenta Ollama)
+    if (normalize(restored) === normalize(masked)) {
+      if (MT_LOG_ENABLED) {
+        console.log("[mt-client] Saída ~= entrada. Tentando fallback Ollama…")
+      }
+      const forced = await forceTranslateWithOllama(masked, src, tgt)
+      return restoreNoTranslate(forced || masked, originals)
+    }
+
+    return restored
   } catch (e) {
-    console.warn("[mt-client] MT service falhou:", e.message)
+    console.warn("[mt-client] MT service falhou:", e?.message || e)
     try {
       const forced = await forceTranslateWithOllama(masked, src, tgt)
-      return restoreNoTranslate(forced, originals)
+      return restoreNoTranslate(forced || masked, originals)
     } catch (e2) {
-      console.warn("[mt-client] Ollama direto também falhou:", e2.message)
+      console.warn(
+        "[mt-client] Ollama direto também falhou:",
+        e2?.message || e2
+      )
     }
+    // Último recurso: devolve texto original restaurado
     return restoreNoTranslate(masked, originals)
   }
 }
