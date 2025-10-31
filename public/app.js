@@ -21,6 +21,7 @@ let compareBaseline = "" // versão anterior fixa
 const altsEl = document.querySelector("#alts")
 const logPendingEl = document.querySelector("#logPending")
 const logApprovedEl = document.querySelector("#logApproved")
+const statusBanner = document.querySelector("#statusMessage")
 
 const locale = "pt-BR"
 const esc = (s) =>
@@ -31,6 +32,33 @@ const esc = (s) =>
         m
       ])
   )
+
+let statusTimer = null
+function showStatus(message = "", variant = "info", { persist = false } = {}) {
+  if (!statusBanner) return
+  if (statusTimer) {
+    clearTimeout(statusTimer)
+    statusTimer = null
+  }
+  if (!message) {
+    statusBanner.hidden = true
+    return
+  }
+  statusBanner.textContent = message
+  statusBanner.dataset.variant = variant
+  statusBanner.hidden = false
+  if (!persist) {
+    statusTimer = setTimeout(() => {
+      statusBanner.hidden = true
+    }, 4500)
+  }
+}
+
+function handleError(error, fallback = "Ocorreu um erro inesperado.") {
+  console.error(error)
+  const detail = error?.message ? ` (${error.message})` : ""
+  showStatus(fallback + detail, "error")
+}
 
 // ===== helpers: caret em contenteditable =====
 function getCaretIndex(root) {
@@ -94,10 +122,17 @@ btnTranslate?.addEventListener("click", () =>
   doTranslate({ log: true, refreshAfter: "pending" })
 )
 btnPasteTranslate?.addEventListener("click", async () => {
-  const clip = (await navigator.clipboard.readText()) || ""
-  if (!clip.trim()) return alert("A área de transferência está vazia.")
-  sourceEl.value = clip.trim()
-  await doTranslate({ log: true, refreshAfter: "pending" })
+  try {
+    const clip = (await navigator.clipboard.readText()) || ""
+    if (!clip.trim()) {
+      showStatus("A área de transferência está vazia.", "warning")
+      return
+    }
+    sourceEl.value = clip.trim()
+    await doTranslate({ log: true, refreshAfter: "pending" })
+  } catch (error) {
+    handleError(error, "Não foi possível acessar a área de transferência.")
+  }
 })
 
 function setTranslating(on) {
@@ -113,6 +148,7 @@ function setTranslating(on) {
       btnPasteTranslate.disabled = true
     }
     editor.dataset.busy = "1"
+    showStatus("Traduzindo...", "loading", { persist: true })
   } else {
     btnTranslate.textContent = btnTranslate.dataset.label
     btnTranslate.disabled = false
@@ -126,7 +162,10 @@ function setTranslating(on) {
 
 async function doTranslate({ log = true, refreshAfter = null } = {}) {
   const text = sourceEl.value.trim()
-  if (!text) return
+  if (!text) {
+    showStatus("Cole ou digite um texto para traduzir.", "warning")
+    return
+  }
   const payload = {
     text,
     src: srcSel.value,
@@ -162,6 +201,9 @@ async function doTranslate({ log = true, refreshAfter = null } = {}) {
 
     renderAlts(j.candidates || [])
     if (refreshAfter === "pending" && log) await fetchPending()
+    showStatus("Tradução atualizada com sucesso!", "success")
+  } catch (error) {
+    handleError(error, "Não foi possível obter a tradução.")
   } finally {
     setTranslating(false)
   }
@@ -238,7 +280,8 @@ compareBtn?.addEventListener("click", () => {
 
 // ================= Alternativas / Logs / TM =================
 function renderAlts(items) {
-  const list = document.querySelector("#alts")
+  const list = altsEl
+  if (!list) return
   list.innerHTML = ""
   items.forEach((it) => {
     const li = document.createElement("li")
@@ -251,35 +294,52 @@ function renderAlts(items) {
     })
     list.appendChild(li)
   })
+  if (items.length) list.removeAttribute("data-empty")
+  else list.setAttribute("data-empty", "1")
 }
 
 async function fetchJSON(url, opts) {
   const r = await fetch(url, opts)
-  if (!r.ok) throw new Error(`HTTP ${r.status}`)
-  return r.json()
+  const raw = await r.text()
+  let data = null
+  if (raw) {
+    try {
+      data = JSON.parse(raw)
+    } catch (_) {
+      data = raw
+    }
+  }
+  if (!r.ok) {
+    const detail =
+      data && typeof data === "object" ? data.error || data.message : raw
+    throw new Error(detail ? `HTTP ${r.status}: ${detail}` : `HTTP ${r.status}`)
+  }
+  return data ?? {}
 }
 async function fetchPending() {
   try {
     renderPending(await fetchJSON("/api/logs?status=pending&limit=200"))
   } catch (e) {
-    console.error(e)
+    handleError(e, "Falha ao carregar traduções pendentes.")
   }
 }
 async function fetchApprovedTM() {
   try {
     renderApprovedTM(await fetchJSON("/api/tm?limit=200"))
   } catch (e) {
-    console.error(e)
+    handleError(e, "Falha ao carregar a memória de tradução.")
   }
 }
 
 function renderPending(rows) {
-  const byId = new Map(rows.map((r) => [r.id, r]))
+  if (!logPendingEl) return
+  const items = Array.isArray(rows) ? rows : []
+  const byId = new Map(items.map((r) => [r.id, r]))
   Array.from(logPendingEl.children).forEach((li) => {
     const id = Number(li.dataset.id)
     if (!byId.has(id)) li.remove()
   })
-  rows.forEach((row) => {
+  items.forEach((row) => {
     let li = logPendingEl.querySelector(`li[data-id="${row.id}"]`)
     if (!li) {
       li = document.createElement("li")
@@ -305,35 +365,53 @@ function renderPending(rows) {
       tgtTA.value = row.target_text || ""
 
       li.querySelector(".save").addEventListener("click", async () => {
-        await fetchJSON(`/api/logs/${row.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            source_text: srcTA.value,
-            target_text: tgtTA.value,
-          }),
-        })
+        try {
+          await fetchJSON(`/api/logs/${row.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              source_text: srcTA.value,
+              target_text: tgtTA.value,
+            }),
+          })
+          showStatus("Tradução pendente atualizada.", "success")
+        } catch (error) {
+          handleError(error, "Não foi possível salvar a alteração.")
+        }
       })
       li.querySelector(".approve").addEventListener("click", async () => {
-        await fetchJSON(`/api/logs/${row.id}/approve`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            source_text: srcTA.value,
-            target_text: tgtTA.value,
-          }),
-        })
-        li.remove()
-        await fetchApprovedTM()
+        try {
+          await fetchJSON(`/api/logs/${row.id}/approve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              source_text: srcTA.value,
+              target_text: tgtTA.value,
+            }),
+          })
+          li.remove()
+          await fetchApprovedTM()
+          showStatus("Tradução aprovada e movida para a memória.", "success")
+          await fetchPending()
+        } catch (error) {
+          handleError(error, "Não foi possível aprovar esta tradução.")
+        }
       })
       li.querySelector(".reject").addEventListener("click", async () => {
-        await fetchJSON(`/api/logs/${row.id}/reject`, { method: "POST" })
-        li.remove()
+        try {
+          await fetchJSON(`/api/logs/${row.id}/reject`, { method: "POST" })
+          li.remove()
+          showStatus("Tradução pendente rejeitada.", "warning")
+          await fetchPending()
+        } catch (error) {
+          handleError(error, "Não foi possível rejeitar a tradução.")
+        }
       })
       li.querySelector(".copy").addEventListener("click", () => {
         sourceEl.value = srcTA.value
         if (compareActive) renderDiff(compareBaseline, tgtTA.value)
         else setPlainText(tgtTA.value)
+        showStatus("Par copiado para o editor.", "info")
       })
       logPendingEl.appendChild(li)
     } else {
@@ -344,11 +422,16 @@ function renderPending(rows) {
       } • ${row.created_at}`
     }
   })
+  if (logPendingEl.children.length)
+    logPendingEl.removeAttribute("data-empty")
+  else logPendingEl.setAttribute("data-empty", "1")
 }
 
 function renderApprovedTM(rows = []) {
+  if (!logApprovedEl) return
   logApprovedEl.innerHTML = ""
-  rows.forEach((row) => {
+  const items = Array.isArray(rows) ? rows : []
+  items.forEach((row) => {
     const li = document.createElement("li")
     li.className = "log-item"
     li.dataset.id = row.id
@@ -369,29 +452,47 @@ function renderApprovedTM(rows = []) {
       </div>`
     const tgtTA = li.querySelector(".tgt")
     li.querySelector(".update").addEventListener("click", async () => {
-      const up = await fetchJSON(`/api/tm/${row.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target_text: tgtTA.value.trim() }),
-      })
-      tgtTA.value = up.target_text
-      li.querySelector(".meta").textContent = `TM #${up.id} • uses:${
-        up.uses ?? row.uses ?? 0
-      } • quality:${Number(up.quality ?? row.quality ?? 0.9).toFixed(2)}`
+      try {
+        const up = await fetchJSON(`/api/tm/${row.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ target_text: tgtTA.value.trim() }),
+        })
+        if (up && typeof up === "object") {
+          tgtTA.value = up.target_text ?? tgtTA.value
+          li.querySelector(".meta").textContent = `TM #${up.id ?? row.id} • uses:${
+            up.uses ?? row.uses ?? 0
+          } • quality:${Number(up.quality ?? row.quality ?? 0.9).toFixed(2)}`
+        }
+        showStatus("Entrada atualizada na memória.", "success")
+      } catch (error) {
+        handleError(error, "Não foi possível atualizar esta entrada da memória.")
+      }
     })
     li.querySelector(".del").addEventListener("click", async () => {
       if (!confirm("Remover esta tradução da memória (TM)?")) return
-      await fetchJSON(`/api/tm/${row.id}`, { method: "DELETE" })
-      li.remove()
+      try {
+        await fetchJSON(`/api/tm/${row.id}`, { method: "DELETE" })
+        li.remove()
+        showStatus("Entrada removida da memória de tradução.", "warning")
+        if (!logApprovedEl.children.length)
+          logApprovedEl.setAttribute("data-empty", "1")
+      } catch (error) {
+        handleError(error, "Não foi possível remover esta entrada da memória.")
+      }
     })
     li.querySelector(".copy").addEventListener("click", () => {
       sourceEl.value = li.querySelector(".src").value || row.source_norm || ""
       if (compareActive)
         renderDiff(compareBaseline, tgtTA.value || row.target_text || "")
       else setPlainText(tgtTA.value || row.target_text || "")
+      showStatus("Entrada copiada para o editor.", "info")
     })
     logApprovedEl.appendChild(li)
   })
+  if (logApprovedEl.children.length)
+    logApprovedEl.removeAttribute("data-empty")
+  else logApprovedEl.setAttribute("data-empty", "1")
 }
 
 // =================== Toolbar (copiar/case/cap) ===================
@@ -401,9 +502,16 @@ const btnLower = document.querySelector("#btnLower")
 const btnCapWords = document.querySelector("#btnCapWords")
 const btnCapSentence = document.querySelector("#btnCapSentence")
 
-btnCopy?.addEventListener("click", () => {
-  navigator.clipboard.writeText(editor.textContent)
-  alert("Texto copiado!")
+btnCopy?.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(editor.textContent)
+    showStatus("Tradução copiada para a área de transferência.", "success")
+  } catch (error) {
+    handleError(
+      error,
+      "Não foi possível copiar o texto para a área de transferência."
+    )
+  }
 })
 btnUpper?.addEventListener("click", () =>
   applyTransform((t) => t.toLocaleUpperCase(locale))
@@ -458,18 +566,26 @@ function applyTransform(fn) {
 btnApprove?.addEventListener("click", async () => {
   const src = sourceEl.value.trim()
   const tgt = editor.textContent.trim()
-  if (!src || !tgt) return alert("Forneça texto original e tradução.")
-  const r = await fetch("/api/translate/approve", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      source_text: src,
-      target_text: tgt,
-      removeFromLog: true,
-    }),
-  })
-  const j = await r.json()
-  if (j?.ok) await fetchApprovedTM()
+  if (!src || !tgt) {
+    showStatus("Forneça texto original e tradução para aprovar.", "warning")
+    return
+  }
+  try {
+    await fetchJSON("/api/translate/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source_text: src,
+        target_text: tgt,
+        removeFromLog: true,
+      }),
+    })
+    await fetchApprovedTM()
+    await fetchPending()
+    showStatus("Par atual aprovado e salvo na memória.", "success")
+  } catch (error) {
+    handleError(error, "Não foi possível aprovar a tradução atual.")
+  }
 })
 
 // =================== Init ===================
