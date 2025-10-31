@@ -65,6 +65,7 @@ def build_prompt(text: str, src: str, tgt: str, shots: List[LLMShot], glossary: 
     lines.append("Texto a traduzir (copie o layout de linhas):")
     lines.append("```\n" + text + "\n```")
     lines.append("Responda apenas com a tradução do trecho acima, mantendo exatamente as mesmas quebras de linha e sem acrescentar exemplos, observações ou traduções extras.")
+    lines.append("Não use blocos de código ou qualquer formatação Markdown na resposta; devolva somente o texto em texto plano.")
     return "\n".join(lines)
 
 
