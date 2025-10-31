@@ -1,1 +1,27 @@
-import fs from 'node:fs';import { all } from '../backend/db.js';const rows=await all('SELECT source_norm as source_text, target_text FROM tm_entries ORDER BY last_used_at DESC');fs.writeFileSync('data/dataset.jsonl',rows.map(r=>JSON.stringify(r)).join('\n'));console.log('✔ Exportado data/dataset.jsonl com',rows.length,'pares.')
+import fs from "node:fs";
+import path from "node:path";
+
+import "../backend/src/configs/env.js";
+import { prisma } from "../backend/src/database/prisma.js";
+
+const rows = await prisma.translationMemoryEntry.findMany({
+  select: {
+    sourceNorm: true,
+    targetText: true,
+  },
+  orderBy: { lastUsedAt: "desc" },
+});
+
+const outputPath = path.resolve("data/dataset.jsonl");
+fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+
+const data = rows
+  .map((row) =>
+    JSON.stringify({ source_text: row.sourceNorm, target_text: row.targetText })
+  )
+  .join("\n");
+
+fs.writeFileSync(outputPath, data);
+console.log("✔ Exportado", outputPath, "com", rows.length, "pares.");
+
+await prisma.$disconnect();

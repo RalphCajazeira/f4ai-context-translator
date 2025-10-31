@@ -1,0 +1,90 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model TranslationMemoryEntry {
+  id          Int      @id @default(autoincrement())
+  sourceNorm  String   @map("source_norm")
+  targetText  String   @map("target_text")
+  srcLang     String   @map("src_lang") @default("")
+  tgtLang     String   @map("tgt_lang") @default("")
+  uses        Int      @default(1)
+  quality     Float    @default(0.9)
+  game        String?
+  mod         String?
+  createdAt   DateTime @map("created_at") @default(now())
+  updatedAt   DateTime @map("updated_at") @updatedAt
+  lastUsedAt  DateTime @map("last_used_at") @default(now())
+
+  @@map("tm_entries")
+  @@index([sourceNorm])
+  @@index([lastUsedAt])
+}
+
+model GlossaryEntry {
+  id         Int      @id @default(autoincrement())
+  termSource String   @map("term_source")
+  termTarget String   @map("term_target")
+  notes      String?
+  game       String?
+  mod        String?
+  approved   Boolean  @default(true)
+  searchText String   @map("search_text") @default("")
+  createdAt  DateTime @map("created_at") @default(now())
+  updatedAt  DateTime @map("updated_at") @updatedAt
+
+  @@map("glossary")
+  @@index([termSource])
+  @@index([searchText])
+}
+
+model BlacklistEntry {
+  id        Int      @id @default(autoincrement())
+  term      String   @unique
+  notes     String?
+  game      String?
+  mod       String?
+  searchText String   @map("search_text") @default("")
+  createdAt DateTime @map("created_at") @default(now())
+  updatedAt DateTime @map("updated_at") @updatedAt
+
+  @@map("blacklist")
+  @@index([searchText])
+}
+
+model TranslationLog {
+  id         Int      @id @default(autoincrement())
+  sourceText String   @map("source_text")
+  targetText String   @map("target_text")
+  origin     String   @default("ui")
+  approved   Int      @default(0)
+  game       String?
+  mod        String?
+  searchText String   @map("search_text") @default("")
+  createdAt  DateTime @map("created_at") @default(now())
+  updatedAt  DateTime @map("updated_at") @updatedAt
+
+  @@map("translation_logs")
+  @@index([createdAt, id])
+  @@index([searchText])
+}
+
+model Segment {
+  id         Int      @id @default(autoincrement())
+  file       String?
+  context    String?
+  sourceText String   @map("source_text")
+  targetText String?  @map("target_text")
+  status     String   @default("new")
+  game       String?
+  mod        String?
+  createdAt  DateTime @map("created_at") @default(now())
+  updatedAt  DateTime @map("updated_at") @updatedAt
+
+  @@map("segments")
+}
