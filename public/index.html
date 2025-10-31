@@ -7,27 +7,43 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <header>
-      <h1>F4 AI Context Translator</h1>
-      <div class="langs">
-        <select id="src">
-          <option value="en" selected>Inglês</option>
-          <option value="pt-BR">Português Br</option>
-          <option value="es">Espanhol</option>
-          <option value="fr">Francês</option>
-        </select>
-        <span>→</span>
-        <select id="tgt">
-          <option value="pt-BR" selected>Português Br</option>
-          <option value="en">Inglês</option>
-          <option value="es">Espanhol</option>
-          <option value="fr">Francês</option>
-        </select>
-        <button id="swap">↔</button>
-      </div>
-    </header>
+    <div class="app-shell">
+      <header class="app-header">
+        <div class="title-wrap">
+          <h1>F4 AI Context Translator</h1>
+          <p class="subtitle">
+            Central de produtividade para revisão, ajuste e aprovação de traduções
+            assistidas por IA.
+          </p>
+        </div>
+        <div class="langs" aria-label="Configuração de idiomas">
+          <label class="sr-only" for="src">Idioma de origem</label>
+          <select id="src">
+            <option value="en" selected>Inglês</option>
+            <option value="pt-BR">Português Br</option>
+            <option value="es">Espanhol</option>
+            <option value="fr">Francês</option>
+          </select>
+          <span aria-hidden="true">→</span>
+          <label class="sr-only" for="tgt">Idioma alvo</label>
+          <select id="tgt">
+            <option value="pt-BR" selected>Português Br</option>
+            <option value="en">Inglês</option>
+            <option value="es">Espanhol</option>
+            <option value="fr">Francês</option>
+          </select>
+          <button id="swap" type="button" aria-label="Inverter idiomas">↔</button>
+        </div>
+      </header>
 
-    <main class="grid">
+      <section
+        id="statusMessage"
+        class="status-banner"
+        aria-live="polite"
+        hidden
+      ></section>
+
+      <main class="grid">
       <!-- Coluna 1 -->
       <section class="panel">
         <h3>Texto original</h3>
@@ -36,17 +52,29 @@
           placeholder="Cole aqui o texto do mod..."
         ></textarea>
         <div class="actions">
-          <button id="btnTranslate" title="Traduzir (gera log)">
+          <button
+            id="btnTranslate"
+            class="btn btn-primary"
+            title="Traduzir (gera log)"
+          >
             Traduzir
           </button>
-          <button id="btnPasteTranslate" title="Colar e traduzir">
+          <button
+            id="btnPasteTranslate"
+            class="btn btn-secondary"
+            title="Colar e traduzir"
+          >
             📥 Trad.
           </button>
           <label class="keep-lines">
             <input type="checkbox" id="preserveLines" checked />
             Preservar quebras de linha
           </label>
-          <button id="btnApprove" title="Salvar par na TM (sem log)">
+          <button
+            id="btnApprove"
+            class="btn btn-primary"
+            title="Salvar par na TM (sem log)"
+          >
             Aprovar na Memória
           </button>
         </div>
@@ -92,23 +120,19 @@
           </button>
         </div>
 
-        <div
-          class="cap-options"
-          style="display: flex; gap: 0.5rem; flex-wrap: wrap"
-        >
-          <label
-            >Ignorar palavras menores que
+        <div class="cap-options">
+          <label>
+            Ignorar palavras menores que
             <input
               id="capMinLen"
               type="number"
               value="2"
               min="0"
-              style="width: 4rem"
             />
             letra(s)
           </label>
-          <label style="flex: 1 1 380px"
-            >Ignorar as palavras
+          <label class="cap-ignore">
+            Ignorar as palavras
             <input
               id="capIgnore"
               type="text"
@@ -120,7 +144,7 @@
 
         <div>
           <h4>Alternativas</h4>
-          <ul id="alts"></ul>
+          <ul id="alts" data-empty></ul>
         </div>
       </section>
 
@@ -206,21 +230,30 @@
       <section class="logs-row">
         <section class="panel log">
           <h3>Log de Traduções — Pendentes</h3>
-          <ul id="logPending"></ul>
+          <ul
+            id="logPending"
+            data-empty
+            data-empty-label="Nenhum item pendente no momento."
+          ></ul>
         </section>
         <section class="panel log">
           <h3>Log de Traduções — Aprovados (Memória)</h3>
-          <ul id="logApproved"></ul>
+          <ul
+            id="logApproved"
+            data-empty
+            data-empty-label="Nenhum registro aprovado disponível."
+          ></ul>
         </section>
       </section>
-    </main>
+      </main>
 
-    <footer>
-      <small
-        >Backends: <b>Ollama LLM</b> (context-aware) • Fallback:
-        <b>M2M100</b></small
-      >
-    </footer>
+      <footer>
+        <small
+          >Backends: <b>Ollama LLM</b> (context-aware) • Fallback:
+          <b>M2M100</b></small
+        >
+      </footer>
+    </div>
 
     <!-- Scripts -->
     <script src="/app.js"></script>
