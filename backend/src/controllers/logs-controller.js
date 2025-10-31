@@ -9,10 +9,29 @@ const STATUS_MAP = {
   rejected: -1,
 };
 
+function clampLimit(raw, fallback = 25) {
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isNaN(parsed) || parsed <= 0) return fallback;
+  return Math.min(parsed, 50);
+}
+
+function parsePage(raw) {
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isNaN(parsed) || parsed <= 0) return 1;
+  return parsed;
+}
+
 class LogsController {
   async index(request, response) {
-    const { status = "pending", limit, all, game, mod } = request.query;
-    const take = Math.min(Number(limit) || 200, 1000);
+    const {
+      status = "pending",
+      limit = "25",
+      all,
+      game,
+      mod,
+      q = "",
+      page = "1",
+    } = request.query;
 
     response.set(
       "Cache-Control",
@@ -38,13 +57,41 @@ class LogsController {
       filters.push({ OR: [{ mod }, { mod: null }] });
     }
 
-    const rows = await prisma.translationLog.findMany({
-      where: filters.length ? { AND: filters } : undefined,
-      orderBy: { createdAt: "desc" },
-      take,
-    });
+    if (q) {
+      filters.push({
+        OR: [
+          { sourceText: { contains: q, mode: "insensitive" } },
+          { targetText: { contains: q, mode: "insensitive" } },
+          { origin: { contains: q, mode: "insensitive" } },
+          { game: { contains: q, mode: "insensitive" } },
+          { mod: { contains: q, mode: "insensitive" } },
+        ],
+      });
+    }
 
-    return response.json(rows.map(serializeTranslationLog));
+    const perPage = clampLimit(limit);
+    const currentPage = parsePage(page);
+    const where = filters.length ? { AND: filters } : undefined;
+
+    const [total, rows] = await Promise.all([
+      prisma.translationLog.count({ where }),
+      prisma.translationLog.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (currentPage - 1) * perPage,
+        take: perPage,
+      }),
+    ]);
+
+    return response.json({
+      items: rows.map(serializeTranslationLog),
+      meta: {
+        total,
+        page: currentPage,
+        per_page: perPage,
+        total_pages: Math.max(1, Math.ceil(total / perPage) || 1),
+      },
+    });
   }
 
   async update(request, response) {

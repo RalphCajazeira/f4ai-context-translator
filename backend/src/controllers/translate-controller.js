@@ -301,12 +301,19 @@ class TranslateController {
       preserveLines = true,
       log = false,
       origin = "ui",
-      game = null,
-      mod = null,
+      game: rawGame = null,
+      mod: rawMod = null,
     } = request.body || {};
 
     if (!text) {
       throw new AppError("text é obrigatório", 400);
+    }
+
+    const game = typeof rawGame === "string" ? rawGame.trim() : "";
+    const mod = typeof rawMod === "string" ? rawMod.trim() : "";
+
+    if (!game || !mod) {
+      throw new AppError("game e mod são obrigatórios", 400);
     }
 
     const filters = { game, mod, srcLang: src, tgtLang: tgt };

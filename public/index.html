@@ -42,6 +42,7 @@
               type="text"
               placeholder="Nome do jogo"
               autocomplete="off"
+              required
             />
             <label class="sr-only" for="modName">Nome do mod</label>
             <input
@@ -49,6 +50,7 @@
               type="text"
               placeholder="Nome do mod"
               autocomplete="off"
+              required
             />
           </div>
         </div>
@@ -70,49 +72,86 @@
           <main class="grid">
             <!-- Coluna 1 -->
             <section class="panel">
+              <div class="panel-toolbar main-actions" role="group" aria-label="Ações do texto original">
+                <div class="button-stack">
+                  <button
+                    id="btnTranslate"
+                    class="btn btn-primary"
+                    title="Traduzir (gera log)"
+                  >
+                    Traduzir
+                  </button>
+                  <button
+                    id="btnPasteTranslate"
+                    class="btn btn-secondary"
+                    title="Colar e traduzir"
+                  >
+                    📥 Trad.
+                  </button>
+                  <button
+                    id="btnApproveAndNext"
+                    class="btn btn-accent"
+                    title="Aprovar tradução atual e iniciar a próxima"
+                  >
+                    ✅ Aprovar &amp; 📥 Próx.
+                  </button>
+                  <button
+                    id="btnApprove"
+                    class="btn btn-primary"
+                    title="Salvar par na TM (sem log)"
+                  >
+                    Aprovar na Memória
+                  </button>
+                </div>
+                <label class="keep-lines">
+                  <input type="checkbox" id="preserveLines" checked />
+                  Preservar quebras de linha
+                </label>
+              </div>
               <h3>Texto original</h3>
               <textarea
                 id="source"
                 placeholder="Cole aqui o texto do mod..."
               ></textarea>
-              <div class="actions">
-                <button
-                  id="btnTranslate"
-                  class="btn btn-primary"
-                  title="Traduzir (gera log)"
-                >
-                  Traduzir
-                </button>
-                <button
-                  id="btnPasteTranslate"
-                  class="btn btn-secondary"
-                  title="Colar e traduzir"
-                >
-                  📥 Trad.
-                </button>
-                <button
-                  id="btnApproveAndNext"
-                  class="btn btn-accent"
-                  title="Aprovar tradução atual e iniciar a próxima"
-                >
-                  ✅ Aprovar &amp; 📥 Próx.
-                </button>
-                <label class="keep-lines">
-                  <input type="checkbox" id="preserveLines" checked />
-                  Preservar quebras de linha
-                </label>
-                <button
-                  id="btnApprove"
-                  class="btn btn-primary"
-                  title="Salvar par na TM (sem log)"
-                >
-                  Aprovar na Memória
-                </button>
-              </div>
             </section>
 
             <!-- Coluna 2 -->
             <section class="panel">
+              <div
+                class="panel-toolbar translation-tools"
+                role="group"
+                aria-label="Ferramentas de pós-edição"
+              >
+                <div class="toolbar">
+                  <button
+                    id="btnCapOptions"
+                    class="btn btn-ghost"
+                    type="button"
+                    aria-haspopup="true"
+                    aria-expanded="false"
+                    aria-controls="capOptionsPanel"
+                    title="Opções avançadas de capitalização"
+                  >
+                    ⚙️
+                  </button>
+                  <button title="Copiar texto" id="btnCopy">📋</button>
+                  <button title="MAIÚSCULO" id="btnUpper">🅰</button>
+                  <button title="minúsculo" id="btnLower">🔡</button>
+                  <button title="Primeira letra de cada palavra" id="btnCapWords">
+                    🅿
+                  </button>
+                  <button title="Primeira letra da frase" id="btnCapSentence">
+                    📝
+                  </button>
+                  <button
+                    title="Comparar alterações"
+                    id="btnCompare"
+                    aria-pressed="false"
+                  >
+                    🔍 Comparar: OFF
+                  </button>
+                </div>
+              </div>
               <h3>Tradução</h3>
 
               <!-- ÚNICA CAIXA DE EDIÇÃO -->
@@ -132,26 +171,7 @@
                 <div id="targetPreview" class="preview" style="display: none"></div>
               </div>
 
-              <div class="toolbar">
-                <button title="Copiar texto" id="btnCopy">📋</button>
-                <button title="MAIÚSCULO" id="btnUpper">🅰</button>
-                <button title="minúsculo" id="btnLower">🔡</button>
-                <button title="Primeira letra de cada palavra" id="btnCapWords">
-                  🅿
-                </button>
-                <button title="Primeira letra da frase" id="btnCapSentence">
-                  📝
-                </button>
-                <button
-                  title="Comparar alterações"
-                  id="btnCompare"
-                  aria-pressed="false"
-                >
-                  🔍 Comparar: OFF
-                </button>
-              </div>
-
-              <div class="cap-options">
+              <div class="cap-options" id="capOptionsPanel">
                 <label>
                   Ignorar palavras menores que
                   <input
@@ -181,9 +201,25 @@
           </main>
 
           <!-- Linha inferior: logs -->
+          <div class="logs-toolbar">
+            <label class="sr-only" for="logSearch">Pesquisar nos logs</label>
+            <input
+              type="search"
+              id="logSearch"
+              placeholder="Pesquisar por texto, game ou mod"
+              autocomplete="off"
+            />
+          </div>
           <section class="logs-row">
             <section class="panel log">
               <h3>Log de Traduções — Pendentes</h3>
+              <div class="list-controls">
+                <span id="logPendingInfo" class="list-info">0 itens</span>
+                <div class="pager" id="logPendingPager">
+                  <button type="button" class="btn btn-ghost" data-dir="prev" aria-label="Página anterior">◀</button>
+                  <button type="button" class="btn btn-ghost" data-dir="next" aria-label="Próxima página">▶</button>
+                </div>
+              </div>
               <ul
                 id="logPending"
                 data-empty
@@ -192,6 +228,13 @@
             </section>
             <section class="panel log">
               <h3>Log de Traduções — Aprovados (Memória)</h3>
+              <div class="list-controls">
+                <span id="logApprovedInfo" class="list-info">0 itens</span>
+                <div class="pager" id="logApprovedPager">
+                  <button type="button" class="btn btn-ghost" data-dir="prev" aria-label="Página anterior">◀</button>
+                  <button type="button" class="btn btn-ghost" data-dir="next" aria-label="Próxima página">▶</button>
+                </div>
+              </div>
               <ul
                 id="logApproved"
                 data-empty
@@ -224,8 +267,36 @@
                 <button class="btn btn-primary">Adicionar</button>
               </form>
 
-              <!-- Lista de cards -->
-              <div id="glossCards" class="gloss-cards"><!-- via JS --></div>
+              <div class="table-toolbar">
+                <input
+                  type="search"
+                  id="glossSearch"
+                  placeholder="Pesquisar termos, notas, game ou mod"
+                  autocomplete="off"
+                />
+                <span id="glossInfo" class="list-info">0 itens</span>
+                <div class="pager" id="glossPager">
+                  <button type="button" class="btn btn-ghost" data-dir="prev" aria-label="Página anterior">◀</button>
+                  <button type="button" class="btn btn-ghost" data-dir="next" aria-label="Próxima página">▶</button>
+                </div>
+              </div>
+
+              <div class="table-wrap">
+                <table id="glossaryTable" class="table">
+                  <thead>
+                    <tr>
+                      <th>EN</th>
+                      <th>PT</th>
+                      <th>Game</th>
+                      <th>Mod</th>
+                      <th>Notas</th>
+                      <th>Aprov.</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
             </div>
 
             <!-- ABA: LISTA NEGRA -->
@@ -246,11 +317,27 @@
                 <button class="btn btn-primary" type="submit">Adicionar</button>
               </form>
 
+              <div class="table-toolbar">
+                <input
+                  type="search"
+                  id="blacklistSearch"
+                  placeholder="Pesquisar termos, notas, game ou mod"
+                  autocomplete="off"
+                />
+                <span id="blacklistInfo" class="list-info">0 itens</span>
+                <div class="pager" id="blacklistPager">
+                  <button type="button" class="btn btn-ghost" data-dir="prev" aria-label="Página anterior">◀</button>
+                  <button type="button" class="btn btn-ghost" data-dir="next" aria-label="Próxima página">▶</button>
+                </div>
+              </div>
+
               <div class="table-wrap">
                 <table id="blacklistTable" class="table">
                   <thead>
                     <tr>
                       <th>Termo</th>
+                      <th>Game</th>
+                      <th>Mod</th>
                       <th>Obs</th>
                       <th></th>
                     </tr>
@@ -274,13 +361,8 @@
     </div>
 
     <!-- Scripts -->
-    <script src="/app.js"></script>
     <script src="/glossary.js"></script>
     <script src="/blacklist.js"></script>
-    <script>
-      // inicializações das UIs em abas
-      if (window.initGlossaryUI) window.initGlossaryUI()
-      if (window.initBlacklistUI) window.initBlacklistUI()
-    </script>
+    <script src="/app.js"></script>
   </body>
 </html>

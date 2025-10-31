@@ -6,6 +6,18 @@ function norm(value = "") {
   return String(value).trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+function clampLimit(raw, fallback = 25) {
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isNaN(parsed) || parsed <= 0) return fallback;
+  return Math.min(parsed, 50);
+}
+
+function parsePage(raw) {
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isNaN(parsed) || parsed <= 0) return 1;
+  return parsed;
+}
+
 function normalizeNullable(value) {
   if (value === undefined || value === null) return null;
   const trimmed = String(value).trim();
@@ -29,8 +41,9 @@ function buildOptionalFilter(field, value) {
 
 class TranslationMemoryController {
   async index(request, response) {
-    const { q, limit, src, tgt, game, mod } = request.query;
-    const take = Math.min(Number(limit) || 200, 1000);
+    const { q, limit, src, tgt, game, mod, page = "1" } = request.query;
+    const take = clampLimit(limit ?? 50, 50);
+    const currentPage = parsePage(page);
 
     response.set("Cache-Control", "no-store");
 
@@ -60,13 +73,25 @@ class TranslationMemoryController {
 
     const where = filters.length ? { AND: filters } : {};
 
-    const rows = await prisma.translationMemoryEntry.findMany({
-      where,
-      orderBy: { lastUsedAt: "desc" },
-      take,
-    });
+    const [total, rows] = await Promise.all([
+      prisma.translationMemoryEntry.count({ where }),
+      prisma.translationMemoryEntry.findMany({
+        where,
+        orderBy: { lastUsedAt: "desc" },
+        skip: (currentPage - 1) * take,
+        take,
+      }),
+    ]);
 
-    return response.json(rows.map(serializeTranslationMemory));
+    return response.json({
+      items: rows.map(serializeTranslationMemory),
+      meta: {
+        total,
+        page: currentPage,
+        per_page: take,
+        total_pages: Math.max(1, Math.ceil(total / take) || 1),
+      },
+    });
   }
 
   async create(request, response) {

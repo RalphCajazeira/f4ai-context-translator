@@ -13,6 +13,10 @@ blacklistRoutes.post("/", (request, response, next) =>
   blacklistController.create(request, response).catch(next)
 );
 
+blacklistRoutes.put("/:id", (request, response, next) =>
+  blacklistController.update(request, response).catch(next)
+);
+
 blacklistRoutes.delete("/:id", (request, response, next) =>
   blacklistController.delete(request, response).catch(next)
 );
