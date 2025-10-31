@@ -39,7 +39,7 @@ export async function topKExamples(srcText, k = 5, options = {}) {
   const filters = buildTmFilters(options);
 
   const rows = await prisma.translationMemoryEntry.findMany({
-    where: { AND: [{ sourceNorm: { not: null } }, ...filters] },
+    where: { AND: [{ sourceNorm: { not: "" } }, ...filters] },
     select: {
       sourceNorm: true,
       targetText: true,
