@@ -12,6 +12,7 @@ const toggleOldBtn = document.getElementById("toggleOld")
 const btnTranslate = document.querySelector("#btnTranslate")
 const btnPasteTranslate = document.querySelector("#btnPasteTranslate")
 const btnApprove = document.querySelector("#btnApprove")
+const btnApproveAndNext = document.querySelector("#btnApproveAndNext")
 const preserveLinesChk = document.querySelector("#preserveLines")
 
 const compareBtn = document.querySelector("#btnCompare")
@@ -21,6 +22,17 @@ let compareBaseline = "" // versão anterior fixa
 const altsEl = document.querySelector("#alts")
 const logPendingEl = document.querySelector("#logPending")
 const logApprovedEl = document.querySelector("#logApproved")
+const statusStack = document.querySelector("#statusStack")
+const gameInput = document.querySelector("#gameName")
+const modInput = document.querySelector("#modName")
+
+const STATUS_ICONS = {
+  success: "✔️",
+  error: "⚠️",
+  warning: "⚠️",
+  loading: "⏳",
+  info: "ℹ️",
+}
 
 const locale = "pt-BR"
 const esc = (s) =>
@@ -31,6 +43,82 @@ const esc = (s) =>
         m
       ])
   )
+
+let persistentToast = null
+function dismissToast(el) {
+  if (!el) return
+  el.classList.add("dismissed")
+  setTimeout(() => el.remove(), 200)
+}
+
+function createToast(message, variant = "info") {
+  const el = document.createElement("div")
+  el.className = "status-toast"
+  el.dataset.variant = variant
+
+  const icon = document.createElement("span")
+  icon.className = "icon"
+  icon.textContent = STATUS_ICONS[variant] || STATUS_ICONS.info
+
+  const content = document.createElement("div")
+  content.className = "content"
+  content.textContent = message
+
+  const close = document.createElement("button")
+  close.type = "button"
+  close.className = "dismiss"
+  close.setAttribute("aria-label", "Fechar notificação")
+  close.textContent = "✕"
+  close.addEventListener("click", () => {
+    if (persistentToast === el) persistentToast = null
+    dismissToast(el)
+  })
+
+  el.append(icon, content, close)
+  return el
+}
+
+function showStatus(message = "", variant = "info", { persist = false } = {}) {
+  if (!statusStack) return
+  if (!message) {
+    if (persistentToast) {
+      dismissToast(persistentToast)
+      persistentToast = null
+    }
+    return
+  }
+
+  if (persist) {
+    if (!persistentToast) {
+      persistentToast = createToast(message, variant)
+      statusStack.appendChild(persistentToast)
+    } else {
+      persistentToast.dataset.variant = variant
+      const icon = persistentToast.querySelector(".icon")
+      const content = persistentToast.querySelector(".content")
+      if (icon) icon.textContent = STATUS_ICONS[variant] || STATUS_ICONS.info
+      if (content) content.textContent = message
+    }
+    return
+  }
+
+  if (persistentToast) {
+    dismissToast(persistentToast)
+    persistentToast = null
+  }
+
+  const toast = createToast(message, variant)
+  statusStack.appendChild(toast)
+  setTimeout(() => {
+    if (toast.isConnected) dismissToast(toast)
+  }, 4800)
+}
+
+function handleError(error, fallback = "Ocorreu um erro inesperado.") {
+  console.error(error)
+  const detail = error?.message ? ` (${error.message})` : ""
+  showStatus(fallback + detail, "error")
+}
 
 // ===== helpers: caret em contenteditable =====
 function getCaretIndex(root) {
@@ -93,18 +181,33 @@ toggleOldBtn?.addEventListener("click", () => {
 btnTranslate?.addEventListener("click", () =>
   doTranslate({ log: true, refreshAfter: "pending" })
 )
-btnPasteTranslate?.addEventListener("click", async () => {
-  const clip = (await navigator.clipboard.readText()) || ""
-  if (!clip.trim()) return alert("A área de transferência está vazia.")
-  sourceEl.value = clip.trim()
-  await doTranslate({ log: true, refreshAfter: "pending" })
-})
+btnPasteTranslate?.addEventListener("click", () =>
+  pasteAndTranslate({ log: true, refreshAfter: "pending" })
+)
+
+async function pasteAndTranslate({ log = true, refreshAfter = "pending" } = {}) {
+  try {
+    const clip = (await navigator.clipboard.readText()) || ""
+    if (!clip.trim()) {
+      showStatus("A área de transferência está vazia.", "warning")
+      return false
+    }
+    sourceEl.value = clip.trim()
+    await doTranslate({ log, refreshAfter })
+    return true
+  } catch (error) {
+    handleError(error, "Não foi possível acessar a área de transferência.")
+    return false
+  }
+}
 
 function setTranslating(on) {
   if (!btnTranslate.dataset.label)
     btnTranslate.dataset.label = btnTranslate.textContent
   if (btnPasteTranslate && !btnPasteTranslate.dataset.label)
     btnPasteTranslate.dataset.label = btnPasteTranslate.textContent
+  if (btnApproveAndNext && !btnApproveAndNext.dataset.label)
+    btnApproveAndNext.dataset.label = btnApproveAndNext.textContent
   if (on) {
     btnTranslate.textContent = "Traduzindo..."
     btnTranslate.disabled = true
@@ -112,7 +215,9 @@ function setTranslating(on) {
       btnPasteTranslate.textContent = "Traduzindo..."
       btnPasteTranslate.disabled = true
     }
+    if (btnApproveAndNext) btnApproveAndNext.disabled = true
     editor.dataset.busy = "1"
+    showStatus("Traduzindo...", "loading", { persist: true })
   } else {
     btnTranslate.textContent = btnTranslate.dataset.label
     btnTranslate.disabled = false
@@ -120,13 +225,19 @@ function setTranslating(on) {
       btnPasteTranslate.textContent = btnPasteTranslate.dataset.label
       btnPasteTranslate.disabled = false
     }
+    if (btnApproveAndNext) btnApproveAndNext.disabled = false
     delete editor.dataset.busy
   }
 }
 
 async function doTranslate({ log = true, refreshAfter = null } = {}) {
   const text = sourceEl.value.trim()
-  if (!text) return
+  if (!text) {
+    showStatus("Cole ou digite um texto para traduzir.", "warning")
+    return
+  }
+  const gameName = (gameInput?.value || "").trim()
+  const modName = (modInput?.value || "").trim()
   const payload = {
     text,
     src: srcSel.value,
@@ -134,6 +245,8 @@ async function doTranslate({ log = true, refreshAfter = null } = {}) {
     preserveLines: !!(preserveLinesChk && preserveLinesChk.checked),
     log,
     origin: "ui",
+    game: gameName || null,
+    mod: modName || null,
   }
 
   // guarda “versão anterior”
@@ -162,6 +275,9 @@ async function doTranslate({ log = true, refreshAfter = null } = {}) {
 
     renderAlts(j.candidates || [])
     if (refreshAfter === "pending" && log) await fetchPending()
+    showStatus("Tradução atualizada com sucesso!", "success")
+  } catch (error) {
+    handleError(error, "Não foi possível obter a tradução.")
   } finally {
     setTranslating(false)
   }
@@ -238,7 +354,8 @@ compareBtn?.addEventListener("click", () => {
 
 // ================= Alternativas / Logs / TM =================
 function renderAlts(items) {
-  const list = document.querySelector("#alts")
+  const list = altsEl
+  if (!list) return
   list.innerHTML = ""
   items.forEach((it) => {
     const li = document.createElement("li")
@@ -251,35 +368,52 @@ function renderAlts(items) {
     })
     list.appendChild(li)
   })
+  if (items.length) list.removeAttribute("data-empty")
+  else list.setAttribute("data-empty", "1")
 }
 
 async function fetchJSON(url, opts) {
   const r = await fetch(url, opts)
-  if (!r.ok) throw new Error(`HTTP ${r.status}`)
-  return r.json()
+  const raw = await r.text()
+  let data = null
+  if (raw) {
+    try {
+      data = JSON.parse(raw)
+    } catch (_) {
+      data = raw
+    }
+  }
+  if (!r.ok) {
+    const detail =
+      data && typeof data === "object" ? data.error || data.message : raw
+    throw new Error(detail ? `HTTP ${r.status}: ${detail}` : `HTTP ${r.status}`)
+  }
+  return data ?? {}
 }
 async function fetchPending() {
   try {
     renderPending(await fetchJSON("/api/logs?status=pending&limit=200"))
   } catch (e) {
-    console.error(e)
+    handleError(e, "Falha ao carregar traduções pendentes.")
   }
 }
 async function fetchApprovedTM() {
   try {
     renderApprovedTM(await fetchJSON("/api/tm?limit=200"))
   } catch (e) {
-    console.error(e)
+    handleError(e, "Falha ao carregar a memória de tradução.")
   }
 }
 
 function renderPending(rows) {
-  const byId = new Map(rows.map((r) => [r.id, r]))
+  if (!logPendingEl) return
+  const items = Array.isArray(rows) ? rows : []
+  const byId = new Map(items.map((r) => [r.id, r]))
   Array.from(logPendingEl.children).forEach((li) => {
     const id = Number(li.dataset.id)
     if (!byId.has(id)) li.remove()
   })
-  rows.forEach((row) => {
+  items.forEach((row) => {
     let li = logPendingEl.querySelector(`li[data-id="${row.id}"]`)
     if (!li) {
       li = document.createElement("li")
@@ -305,35 +439,53 @@ function renderPending(rows) {
       tgtTA.value = row.target_text || ""
 
       li.querySelector(".save").addEventListener("click", async () => {
-        await fetchJSON(`/api/logs/${row.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            source_text: srcTA.value,
-            target_text: tgtTA.value,
-          }),
-        })
+        try {
+          await fetchJSON(`/api/logs/${row.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              source_text: srcTA.value,
+              target_text: tgtTA.value,
+            }),
+          })
+          showStatus("Tradução pendente atualizada.", "success")
+        } catch (error) {
+          handleError(error, "Não foi possível salvar a alteração.")
+        }
       })
       li.querySelector(".approve").addEventListener("click", async () => {
-        await fetchJSON(`/api/logs/${row.id}/approve`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            source_text: srcTA.value,
-            target_text: tgtTA.value,
-          }),
-        })
-        li.remove()
-        await fetchApprovedTM()
+        try {
+          await fetchJSON(`/api/logs/${row.id}/approve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              source_text: srcTA.value,
+              target_text: tgtTA.value,
+            }),
+          })
+          li.remove()
+          await fetchApprovedTM()
+          showStatus("Tradução aprovada e movida para a memória.", "success")
+          await fetchPending()
+        } catch (error) {
+          handleError(error, "Não foi possível aprovar esta tradução.")
+        }
       })
       li.querySelector(".reject").addEventListener("click", async () => {
-        await fetchJSON(`/api/logs/${row.id}/reject`, { method: "POST" })
-        li.remove()
+        try {
+          await fetchJSON(`/api/logs/${row.id}/reject`, { method: "POST" })
+          li.remove()
+          showStatus("Tradução pendente rejeitada.", "warning")
+          await fetchPending()
+        } catch (error) {
+          handleError(error, "Não foi possível rejeitar a tradução.")
+        }
       })
       li.querySelector(".copy").addEventListener("click", () => {
         sourceEl.value = srcTA.value
         if (compareActive) renderDiff(compareBaseline, tgtTA.value)
         else setPlainText(tgtTA.value)
+        showStatus("Par copiado para o editor.", "info")
       })
       logPendingEl.appendChild(li)
     } else {
@@ -344,11 +496,16 @@ function renderPending(rows) {
       } • ${row.created_at}`
     }
   })
+  if (logPendingEl.children.length)
+    logPendingEl.removeAttribute("data-empty")
+  else logPendingEl.setAttribute("data-empty", "1")
 }
 
 function renderApprovedTM(rows = []) {
+  if (!logApprovedEl) return
   logApprovedEl.innerHTML = ""
-  rows.forEach((row) => {
+  const items = Array.isArray(rows) ? rows : []
+  items.forEach((row) => {
     const li = document.createElement("li")
     li.className = "log-item"
     li.dataset.id = row.id
@@ -369,29 +526,47 @@ function renderApprovedTM(rows = []) {
       </div>`
     const tgtTA = li.querySelector(".tgt")
     li.querySelector(".update").addEventListener("click", async () => {
-      const up = await fetchJSON(`/api/tm/${row.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target_text: tgtTA.value.trim() }),
-      })
-      tgtTA.value = up.target_text
-      li.querySelector(".meta").textContent = `TM #${up.id} • uses:${
-        up.uses ?? row.uses ?? 0
-      } • quality:${Number(up.quality ?? row.quality ?? 0.9).toFixed(2)}`
+      try {
+        const up = await fetchJSON(`/api/tm/${row.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ target_text: tgtTA.value.trim() }),
+        })
+        if (up && typeof up === "object") {
+          tgtTA.value = up.target_text ?? tgtTA.value
+          li.querySelector(".meta").textContent = `TM #${up.id ?? row.id} • uses:${
+            up.uses ?? row.uses ?? 0
+          } • quality:${Number(up.quality ?? row.quality ?? 0.9).toFixed(2)}`
+        }
+        showStatus("Entrada atualizada na memória.", "success")
+      } catch (error) {
+        handleError(error, "Não foi possível atualizar esta entrada da memória.")
+      }
     })
     li.querySelector(".del").addEventListener("click", async () => {
       if (!confirm("Remover esta tradução da memória (TM)?")) return
-      await fetchJSON(`/api/tm/${row.id}`, { method: "DELETE" })
-      li.remove()
+      try {
+        await fetchJSON(`/api/tm/${row.id}`, { method: "DELETE" })
+        li.remove()
+        showStatus("Entrada removida da memória de tradução.", "warning")
+        if (!logApprovedEl.children.length)
+          logApprovedEl.setAttribute("data-empty", "1")
+      } catch (error) {
+        handleError(error, "Não foi possível remover esta entrada da memória.")
+      }
     })
     li.querySelector(".copy").addEventListener("click", () => {
       sourceEl.value = li.querySelector(".src").value || row.source_norm || ""
       if (compareActive)
         renderDiff(compareBaseline, tgtTA.value || row.target_text || "")
       else setPlainText(tgtTA.value || row.target_text || "")
+      showStatus("Entrada copiada para o editor.", "info")
     })
     logApprovedEl.appendChild(li)
   })
+  if (logApprovedEl.children.length)
+    logApprovedEl.removeAttribute("data-empty")
+  else logApprovedEl.setAttribute("data-empty", "1")
 }
 
 // =================== Toolbar (copiar/case/cap) ===================
@@ -401,9 +576,16 @@ const btnLower = document.querySelector("#btnLower")
 const btnCapWords = document.querySelector("#btnCapWords")
 const btnCapSentence = document.querySelector("#btnCapSentence")
 
-btnCopy?.addEventListener("click", () => {
-  navigator.clipboard.writeText(editor.textContent)
-  alert("Texto copiado!")
+btnCopy?.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(editor.textContent)
+    showStatus("Tradução copiada para a área de transferência.", "success")
+  } catch (error) {
+    handleError(
+      error,
+      "Não foi possível copiar o texto para a área de transferência."
+    )
+  }
 })
 btnUpper?.addEventListener("click", () =>
   applyTransform((t) => t.toLocaleUpperCase(locale))
@@ -455,21 +637,59 @@ function applyTransform(fn) {
 }
 
 // =================== Aprovar par atual ===================
-btnApprove?.addEventListener("click", async () => {
+async function approveCurrent({ showSuccess = true } = {}) {
   const src = sourceEl.value.trim()
   const tgt = editor.textContent.trim()
-  if (!src || !tgt) return alert("Forneça texto original e tradução.")
-  const r = await fetch("/api/translate/approve", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      source_text: src,
-      target_text: tgt,
-      removeFromLog: true,
-    }),
-  })
-  const j = await r.json()
-  if (j?.ok) await fetchApprovedTM()
+  if (!src || !tgt) {
+    showStatus("Forneça texto original e tradução para aprovar.", "warning")
+    return false
+  }
+  try {
+    await fetchJSON("/api/translate/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source_text: src,
+        target_text: tgt,
+        removeFromLog: true,
+      }),
+    })
+    await fetchApprovedTM()
+    await fetchPending()
+    if (showSuccess)
+      showStatus("Par atual aprovado e salvo na memória.", "success")
+    return true
+  } catch (error) {
+    handleError(error, "Não foi possível aprovar a tradução atual.")
+    return false
+  }
+}
+
+btnApprove?.addEventListener("click", () => approveCurrent({ showSuccess: true }))
+
+btnApproveAndNext?.addEventListener("click", async () => {
+  if (btnApproveAndNext.disabled) return
+  btnApproveAndNext.disabled = true
+  try {
+    showStatus("Aprovando tradução atual...", "loading", { persist: true })
+    const ok = await approveCurrent({ showSuccess: false })
+    if (!ok) return
+    showStatus(
+      "Par aprovado! Preparando próxima tradução...",
+      "loading",
+      { persist: true }
+    )
+    const started = await pasteAndTranslate({ log: true, refreshAfter: "pending" })
+    if (!started) {
+      showStatus(
+        "Par aprovado, mas nenhuma nova tradução foi encontrada na área de transferência.",
+        "warning"
+      )
+      return
+    }
+  } finally {
+    if (!editor.dataset.busy) btnApproveAndNext.disabled = false
+  }
 })
 
 // =================== Init ===================
@@ -495,60 +715,27 @@ document.querySelectorAll(".tabs .tab").forEach((tab) => {
   })
 })
 
-// ===== Retrátil do painel lateral (Glossário/Blacklist) =====
-;(function setupCollapsibleSidePanel() {
-  const side = document.getElementById("sidePanel")
-  const body = document.getElementById("sideBody")
-  const btn = document.getElementById("toggleSide")
-  if (!side || !body || !btn) return
-
-  const LS_KEY = "ui.sidePanelCollapsed"
-
-  function setBodyMaxHeight() {
-    const wasCollapsed = side.classList.contains("is-collapsed")
-    if (wasCollapsed) side.classList.remove("is-collapsed")
-    body.style.maxHeight = "none"
-    const h = body.scrollHeight
-    body.style.maxHeight = h + "px"
-    if (wasCollapsed) side.classList.add("is-collapsed")
-  }
-
-  function toggle() {
-    const collapsed = side.classList.toggle("is-collapsed")
-    btn.setAttribute("aria-expanded", String(!collapsed))
-    localStorage.setItem(LS_KEY, collapsed ? "1" : "0")
-    if (!collapsed) requestAnimationFrame(() => setBodyMaxHeight())
-  }
-
-  const saved = localStorage.getItem(LS_KEY)
-  if (saved === "1") {
-    side.classList.add("is-collapsed")
-    btn.setAttribute("aria-expanded", "false")
-  } else {
-    btn.setAttribute("aria-expanded", "true")
-  }
-
-  if (!side.classList.contains("is-collapsed")) {
-    window.requestAnimationFrame(() => setBodyMaxHeight())
-  }
-
-  btn.addEventListener("click", toggle)
-  btn.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault()
-      toggle()
-    }
+const appTabs = document.querySelectorAll(".app-tab")
+function activateAppTab(name) {
+  document.querySelectorAll(".app-tab").forEach((tab) => {
+    const isActive = tab.dataset.tab === name
+    tab.classList.toggle("active", isActive)
+    tab.setAttribute("aria-selected", isActive ? "true" : "false")
   })
-
-  document.querySelectorAll(".tabs .tab").forEach((tab) => {
-    tab.addEventListener("click", () => {
-      if (!side.classList.contains("is-collapsed")) {
-        requestAnimationFrame(() => setBodyMaxHeight())
-      }
-    })
+  document.querySelectorAll(".tab-panel").forEach((panel) => {
+    const isActive = panel.id === `tab-${name}`
+    panel.classList.toggle("active", isActive)
+    panel.setAttribute("aria-hidden", isActive ? "false" : "true")
   })
+}
 
-  window.addEventListener("resize", () => {
-    if (!side.classList.contains("is-collapsed")) setBodyMaxHeight()
-  })
-})()
+appTabs.forEach((tab) => {
+  tab.addEventListener("click", () => activateAppTab(tab.dataset.tab))
+})
+
+if (appTabs.length) {
+  const current = Array.from(appTabs).find((tab) =>
+    tab.classList.contains("active")
+  )
+  activateAppTab(current?.dataset.tab || appTabs[0].dataset.tab)
+}
