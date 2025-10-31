@@ -16,6 +16,7 @@ import {
   replaceWordUnicode,
 } from "@/services/case.service.js";
 import { AppError } from "@/utils/app-error.js";
+import { buildSearchVector } from "@/utils/search.js";
 
 function norm(value = "") {
   return String(value).trim().replace(/\s+/g, " ").toLowerCase();
@@ -518,13 +519,15 @@ class TranslateController {
       }));
 
       if (log) {
+        const logOrigin = origin || "api";
         await prisma.translationLog.create({
           data: {
             sourceText: text,
             targetText: best,
-            origin: origin || "api",
+            origin: logOrigin,
             game,
             mod,
+            searchText: buildSearchVector(text, best, logOrigin, game, mod),
           },
         });
       }
@@ -567,13 +570,15 @@ class TranslateController {
       }
       const best = (suggestions && suggestions[0]?.text) || "";
       if (log) {
+        const logOrigin = origin || "api";
         await prisma.translationLog.create({
           data: {
             sourceText: text,
             targetText: best,
-            origin: origin || "api",
+            origin: logOrigin,
             game,
             mod,
+            searchText: buildSearchVector(text, best, logOrigin, game, mod),
           },
         });
       }

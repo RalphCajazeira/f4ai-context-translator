@@ -1,6 +1,11 @@
 import { prisma } from "@/database/prisma.js";
 import { AppError } from "@/utils/app-error.js";
 import { serializeBlacklistEntry } from "@/utils/serializers.js";
+import {
+  buildSearchVector,
+  normalizeNullable,
+  normalizeSearchTerm,
+} from "@/utils/search.js";
 
 function clampLimit(raw, fallback = 25) {
   const parsed = Number.parseInt(raw, 10);
@@ -20,17 +25,14 @@ class BlacklistController {
 
     const filters = [];
 
-    if (game) filters.push({ OR: [{ game }, { game: null }] });
-    if (mod) filters.push({ OR: [{ mod }, { mod: null }] });
-    if (q) {
-      filters.push({
-        OR: [
-          { term: { contains: q, mode: "insensitive" } },
-          { notes: { contains: q, mode: "insensitive" } },
-          { game: { contains: q, mode: "insensitive" } },
-          { mod: { contains: q, mode: "insensitive" } },
-        ],
-      });
+    const gameFilter = normalizeNullable(game);
+    if (gameFilter) filters.push({ OR: [{ game: gameFilter }, { game: null }] });
+    const modFilter = normalizeNullable(mod);
+    if (modFilter) filters.push({ OR: [{ mod: modFilter }, { mod: null }] });
+
+    const searchTerm = normalizeSearchTerm(q);
+    if (searchTerm) {
+      filters.push({ searchText: { contains: searchTerm } });
     }
 
     const perPage = clampLimit(limit);
@@ -79,12 +81,24 @@ class BlacklistController {
         notes,
         game: normalizedGame,
         mod: normalizedMod,
+        searchText: buildSearchVector(
+          normalized,
+          notes,
+          normalizedGame,
+          normalizedMod
+        ),
       },
       create: {
         term: normalized,
         notes,
         game: normalizedGame,
         mod: normalizedMod,
+        searchText: buildSearchVector(
+          normalized,
+          notes,
+          normalizedGame,
+          normalizedMod
+        ),
       },
     });
 
@@ -99,18 +113,18 @@ class BlacklistController {
 
     const { term, notes, game, mod } = request.body || {};
 
-    const data = {};
+    const updates = {};
 
     if (term !== undefined) {
       const normalizedTerm = String(term || "").trim();
       if (!normalizedTerm) {
         throw new AppError("term não pode ser vazio", 400);
       }
-      data.term = normalizedTerm;
+      updates.term = normalizedTerm;
     }
 
     if (notes !== undefined) {
-      data.notes = notes;
+      updates.notes = notes;
     }
 
     if (game !== undefined) {
@@ -118,7 +132,7 @@ class BlacklistController {
       if (!normalizedGame) {
         throw new AppError("game é obrigatório", 400);
       }
-      data.game = normalizedGame;
+      updates.game = normalizedGame;
     }
 
     if (mod !== undefined) {
@@ -126,17 +140,45 @@ class BlacklistController {
       if (!normalizedMod) {
         throw new AppError("mod é obrigatório", 400);
       }
-      data.mod = normalizedMod;
+      updates.mod = normalizedMod;
     }
 
-    if (!Object.keys(data).length) {
+    if (!Object.keys(updates).length) {
       throw new AppError("Nada para atualizar", 400);
     }
+
+    const current = await prisma.blacklistEntry.findUnique({ where: { id } });
+    if (!current) {
+      throw new AppError("Registro não encontrado", 404);
+    }
+
+    const nextTerm =
+      term !== undefined ? String(term || "").trim() : current.term;
+    const nextNotes =
+      notes !== undefined ? (notes === null ? null : notes) : current.notes;
+    const nextGame =
+      game !== undefined
+        ? String(game || "").trim()
+        : current.game ?? null;
+    const nextMod =
+      mod !== undefined
+        ? String(mod || "").trim()
+        : current.mod ?? null;
 
     try {
       const entry = await prisma.blacklistEntry.update({
         where: { id },
-        data,
+        data: {
+          ...updates,
+          game: nextGame,
+          mod: nextMod,
+          searchText: buildSearchVector(
+            nextTerm,
+            nextNotes ?? "",
+            nextGame ?? "",
+            nextMod ?? ""
+          ),
+        },
       });
       return response.json(serializeBlacklistEntry(entry));
     } catch (error) {

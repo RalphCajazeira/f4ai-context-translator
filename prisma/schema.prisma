@@ -34,11 +34,13 @@ model GlossaryEntry {
   game       String?
   mod        String?
   approved   Boolean  @default(true)
+  searchText String   @map("search_text") @default("")
   createdAt  DateTime @map("created_at") @default(now())
   updatedAt  DateTime @map("updated_at") @updatedAt
 
   @@map("glossary")
   @@index([termSource])
+  @@index([searchText])
 }
 
 model BlacklistEntry {
@@ -47,10 +49,12 @@ model BlacklistEntry {
   notes     String?
   game      String?
   mod       String?
+  searchText String   @map("search_text") @default("")
   createdAt DateTime @map("created_at") @default(now())
   updatedAt DateTime @map("updated_at") @updatedAt
 
   @@map("blacklist")
+  @@index([searchText])
 }
 
 model TranslationLog {
@@ -61,11 +65,13 @@ model TranslationLog {
   approved   Int      @default(0)
   game       String?
   mod        String?
+  searchText String   @map("search_text") @default("")
   createdAt  DateTime @map("created_at") @default(now())
   updatedAt  DateTime @map("updated_at") @updatedAt
 
   @@map("translation_logs")
   @@index([createdAt, id])
+  @@index([searchText])
 }
 
 model Segment {

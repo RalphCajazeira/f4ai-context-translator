@@ -53,7 +53,6 @@ class TranslationMemoryController {
       filters.push({
         sourceNorm: {
           contains: norm(q),
-          mode: "insensitive",
         },
       });
     }

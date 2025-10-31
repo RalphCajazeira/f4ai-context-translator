@@ -1,6 +1,11 @@
 import { prisma } from "@/database/prisma.js";
 import { AppError } from "@/utils/app-error.js";
 import { serializeGlossaryEntry } from "@/utils/serializers.js";
+import {
+  buildSearchVector,
+  normalizeNullable,
+  normalizeSearchTerm,
+} from "@/utils/search.js";
 
 function clampLimit(raw, fallback = 25) {
   const parsed = Number.parseInt(raw, 10);
@@ -26,18 +31,14 @@ class GlossaryController {
 
     const filters = [];
 
-    if (game) filters.push({ OR: [{ game }, { game: null }] });
-    if (mod) filters.push({ OR: [{ mod }, { mod: null }] });
-    if (q) {
-      filters.push({
-        OR: [
-          { termSource: { contains: q, mode: "insensitive" } },
-          { termTarget: { contains: q, mode: "insensitive" } },
-          { notes: { contains: q, mode: "insensitive" } },
-          { game: { contains: q, mode: "insensitive" } },
-          { mod: { contains: q, mode: "insensitive" } },
-        ],
-      });
+    const gameFilter = normalizeNullable(game);
+    if (gameFilter) filters.push({ OR: [{ game: gameFilter }, { game: null }] });
+    const modFilter = normalizeNullable(mod);
+    if (modFilter) filters.push({ OR: [{ mod: modFilter }, { mod: null }] });
+
+    const searchTerm = normalizeSearchTerm(q);
+    if (searchTerm) {
+      filters.push({ searchText: { contains: searchTerm } });
     }
 
     const perPage = clampLimit(limit);
@@ -94,6 +95,13 @@ class GlossaryController {
         game: normalizedGame,
         mod: normalizedMod,
         approved: Boolean(approved),
+        searchText: buildSearchVector(
+          term_source,
+          term_target,
+          notes,
+          normalizedGame,
+          normalizedMod
+        ),
       },
     });
 
@@ -115,13 +123,13 @@ class GlossaryController {
       approved,
     } = request.body || {};
 
-    const data = {};
+    const updates = {};
     if (term_source !== undefined) {
       const trimmed = String(term_source || "").trim();
       if (!trimmed) {
         throw new AppError("term_source não pode ser vazio", 400);
       }
-      data.termSource = trimmed;
+      updates.termSource = trimmed;
     }
 
     if (term_target !== undefined) {
@@ -129,33 +137,68 @@ class GlossaryController {
       if (!trimmed) {
         throw new AppError("term_target não pode ser vazio", 400);
       }
-      data.termTarget = trimmed;
+      updates.termTarget = trimmed;
     }
-    if (notes !== undefined) data.notes = notes;
+    if (notes !== undefined) updates.notes = notes;
     if (game !== undefined) {
       const trimmed = String(game || "").trim();
       if (!trimmed) {
         throw new AppError("game é obrigatório", 400);
       }
-      data.game = trimmed;
+      updates.game = trimmed;
     }
     if (mod !== undefined) {
       const trimmed = String(mod || "").trim();
       if (!trimmed) {
         throw new AppError("mod é obrigatório", 400);
       }
-      data.mod = trimmed;
+      updates.mod = trimmed;
     }
-    if (approved !== undefined) data.approved = Boolean(approved);
+    if (approved !== undefined) updates.approved = Boolean(approved);
 
-    if (!Object.keys(data).length) {
+    if (!Object.keys(updates).length) {
       throw new AppError("Nenhum campo para atualizar", 400);
     }
+
+    const current = await prisma.glossaryEntry.findUnique({ where: { id } });
+    if (!current) {
+      throw new AppError("Registro não encontrado", 404);
+    }
+
+    const nextSource =
+      term_source !== undefined
+        ? String(term_source || "").trim()
+        : current.termSource;
+    const nextTarget =
+      term_target !== undefined
+        ? String(term_target || "").trim()
+        : current.termTarget;
+    const nextNotes =
+      notes !== undefined ? (notes === null ? null : notes) : current.notes;
+    const nextGame =
+      game !== undefined
+        ? String(game || "").trim()
+        : current.game ?? null;
+    const nextMod =
+      mod !== undefined
+        ? String(mod || "").trim()
+        : current.mod ?? null;
 
     try {
       const entry = await prisma.glossaryEntry.update({
         where: { id },
-        data,
+        data: {
+          ...updates,
+          game: nextGame,
+          mod: nextMod,
+          searchText: buildSearchVector(
+            nextSource,
+            nextTarget,
+            nextNotes ?? "",
+            nextGame ?? "",
+            nextMod ?? ""
+          ),
+        },
       });
       return response.json(serializeGlossaryEntry(entry));
     } catch (error) {

@@ -2,6 +2,11 @@ import { prisma } from "@/database/prisma.js";
 import { AppError } from "@/utils/app-error.js";
 import { recordApproval } from "@/services/suggest.service.js";
 import { serializeTranslationLog } from "@/utils/serializers.js";
+import {
+  buildSearchVector,
+  normalizeNullable,
+  normalizeSearchTerm,
+} from "@/utils/search.js";
 
 const STATUS_MAP = {
   pending: 0,
@@ -49,24 +54,19 @@ class LogsController {
       filters.push({ approved: STATUS_MAP.pending });
     }
 
-    if (game) {
-      filters.push({ OR: [{ game }, { game: null }] });
+    const gameFilter = normalizeNullable(game);
+    if (gameFilter) {
+      filters.push({ OR: [{ game: gameFilter }, { game: null }] });
     }
 
-    if (mod) {
-      filters.push({ OR: [{ mod }, { mod: null }] });
+    const modFilter = normalizeNullable(mod);
+    if (modFilter) {
+      filters.push({ OR: [{ mod: modFilter }, { mod: null }] });
     }
 
-    if (q) {
-      filters.push({
-        OR: [
-          { sourceText: { contains: q, mode: "insensitive" } },
-          { targetText: { contains: q, mode: "insensitive" } },
-          { origin: { contains: q, mode: "insensitive" } },
-          { game: { contains: q, mode: "insensitive" } },
-          { mod: { contains: q, mode: "insensitive" } },
-        ],
-      });
+    const searchTerm = normalizeSearchTerm(q);
+    if (searchTerm) {
+      filters.push({ searchText: { contains: searchTerm } });
     }
 
     const perPage = clampLimit(limit);
@@ -102,20 +102,44 @@ class LogsController {
 
     const { source_text, target_text, game, mod } = request.body || {};
 
-    const data = {};
-    if (source_text !== undefined) data.sourceText = source_text;
-    if (target_text !== undefined) data.targetText = target_text;
-    if (game !== undefined) data.game = game || null;
-    if (mod !== undefined) data.mod = mod || null;
+    const changes = {};
+    if (source_text !== undefined) changes.sourceText = String(source_text);
+    if (target_text !== undefined) changes.targetText = String(target_text);
+    if (game !== undefined) changes.game = normalizeNullable(game);
+    if (mod !== undefined) changes.mod = normalizeNullable(mod);
 
-    if (!Object.keys(data).length) {
+    if (!Object.keys(changes).length) {
       throw new AppError("Nada para atualizar", 400);
     }
+
+    const current = await prisma.translationLog.findUnique({ where: { id } });
+    if (!current) {
+      throw new AppError("Log não encontrado", 404);
+    }
+
+    const nextSource =
+      source_text !== undefined ? String(source_text) : current.sourceText;
+    const nextTarget =
+      target_text !== undefined ? String(target_text) : current.targetText;
+    const nextGame =
+      game !== undefined ? normalizeNullable(game) : current.game ?? null;
+    const nextMod = mod !== undefined ? normalizeNullable(mod) : current.mod ?? null;
 
     try {
       const entry = await prisma.translationLog.update({
         where: { id },
-        data,
+        data: {
+          ...changes,
+          game: nextGame,
+          mod: nextMod,
+          searchText: buildSearchVector(
+            nextSource,
+            nextTarget,
+            current.origin,
+            nextGame ?? "",
+            nextMod ?? ""
+          ),
+        },
       });
       return response.json({
         ok: true,
@@ -144,8 +168,18 @@ class LogsController {
 
     const sourceText = source_text ?? log.sourceText;
     const targetText = target_text ?? log.targetText;
-    const gameValue = game ?? log.game;
-    const modValue = mod ?? log.mod;
+    const normalizedGame = normalizeNullable(game);
+    const normalizedMod = normalizeNullable(mod);
+    const gameValue = normalizedGame ?? log.game;
+    const modValue = normalizedMod ?? log.mod;
+
+    const searchText = buildSearchVector(
+      sourceText,
+      targetText,
+      log.origin,
+      gameValue ?? "",
+      modValue ?? ""
+    );
 
     await recordApproval(sourceText, targetText, undefined, undefined, {
       game: gameValue,
@@ -160,6 +194,7 @@ class LogsController {
         game: gameValue ?? null,
         mod: modValue ?? null,
         approved: STATUS_MAP.approved,
+        searchText,
       },
     });
 
