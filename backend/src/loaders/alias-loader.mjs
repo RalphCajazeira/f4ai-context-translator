@@ -2,7 +2,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const rootDir = path.resolve(
-  path.dirname(fileURLToPath(new URL("../", import.meta.url)))
+  fileURLToPath(new URL("../", import.meta.url))
 );
 
 export function resolve(specifier, context, defaultResolve) {

@@ -3,8 +3,8 @@
   "version": "3.0.0",
   "type": "module",
   "scripts": {
-    "dev": "NODE_OPTIONS=--enable-source-maps node --watch --loader ./backend/src/loaders/alias-loader.mjs backend/src/server.js",
-    "start": "NODE_OPTIONS=--enable-source-maps node --loader ./backend/src/loaders/alias-loader.mjs backend/src/server.js",
+    "dev": "node --enable-source-maps --watch --loader ./backend/src/loaders/alias-loader.mjs backend/src/server.js",
+    "start": "node --enable-source-maps --loader ./backend/src/loaders/alias-loader.mjs backend/src/server.js",
     "prisma:generate": "prisma generate",
     "prisma:db-push": "prisma db push",
     "prisma:migrate": "prisma migrate deploy",
