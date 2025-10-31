@@ -57,8 +57,10 @@ export function projectGlossaryCaseInSentence(original, target, pairs = []) {
   const esc = (s) => String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
   for (const p of pairs) {
-    const srcTerm = p.term_source ?? p.source_norm
-    const tgtTerm = p.term_target ?? p.target_text
+    const srcTerm =
+      p.term_source ?? p.termSource ?? p.source_norm ?? p.sourceNorm
+    const tgtTerm =
+      p.term_target ?? p.termTarget ?? p.target_text ?? p.targetText
     if (!srcTerm || !tgtTerm) continue
 
     // Busca o termo no original sem diferenciar maiúsculas/minúsculas
