@@ -24,7 +24,7 @@ export async function topKExamples(srcText, k = 5) {
     .map((r) => ({ src: r.source_norm, tgt: r.target_text }))
 }
 
-/* UPSERT na TM — substitui se já existir o mesmo source_norm */
+/* UPSERT na TM — substitui se já existir o mesmo source_norm combinado com o par de idiomas */
 // suggest.service.js (recordApproval)
 export async function recordApproval(
   sourceText,
