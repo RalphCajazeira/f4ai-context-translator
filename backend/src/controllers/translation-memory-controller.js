@@ -76,7 +76,7 @@ class TranslationMemoryController {
       prisma.translationMemoryEntry.count({ where }),
       prisma.translationMemoryEntry.findMany({
         where,
-        orderBy: { lastUsedAt: "desc" },
+        orderBy: { id: "desc" },
         skip: (currentPage - 1) * take,
         take,
       }),
