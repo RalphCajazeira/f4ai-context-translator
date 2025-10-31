@@ -64,9 +64,17 @@ class LogsController {
       filters.push({ OR: [{ mod: modFilter }, { mod: null }] })
     }
 
+    const rawSearch = String(q ?? "").trim()
     const searchTerm = normalizeSearchTerm(q)
     if (searchTerm) {
-      filters.push({ searchText: { contains: searchTerm } })
+      const orFilters = [{ searchText: { contains: searchTerm } }]
+      if (rawSearch) {
+        orFilters.push(
+          { sourceText: { contains: rawSearch } },
+          { targetText: { contains: rawSearch } }
+        )
+      }
+      filters.push({ OR: orFilters })
     }
 
     const perPage = clampLimit(limit)
