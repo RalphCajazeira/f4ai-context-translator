@@ -57,13 +57,14 @@ def build_prompt(text: str, src: str, tgt: str, shots: List[LLMShot], glossary: 
         for g in glossary[:50]:
             lines.append(f"- {g.get('term_source','')} => {g.get('term_target','')}")
     if shots:
-        lines.append("Exemplos (aprendidos):")
-        for s in shots[:5]:
-            lines.append(f"SRC: {s.src}")
-            lines.append(f"TGT: {s.tgt}")
+        lines.append("Exemplos (aprendidos) — NÃO repita esses trechos na resposta final:")
+        for idx, s in enumerate(shots[:5], start=1):
+            lines.append(f"### Exemplo {idx}")
+            lines.append("SRC:\n```\n" + s.src + "\n```")
+            lines.append("TGT:\n```\n" + s.tgt + "\n```")
     lines.append("Texto a traduzir (copie o layout de linhas):")
-    lines.append(text)
-    lines.append("Responda com a tradução pura, mantendo exatamente as mesmas quebras de linha.")
+    lines.append("```\n" + text + "\n```")
+    lines.append("Responda apenas com a tradução do trecho acima, mantendo exatamente as mesmas quebras de linha e sem acrescentar exemplos, observações ou traduções extras.")
     return "\n".join(lines)
 
 
