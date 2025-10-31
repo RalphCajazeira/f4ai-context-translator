@@ -35,9 +35,16 @@ export async function recordApproval(
   const srcNorm = normalize(sourceText)
   const r = await run(
     `UPDATE tm_entries
-       SET uses = uses + 1, quality = MIN(1, quality + 0.02), last_used_at = CURRENT_TIMESTAMP
-     WHERE source_norm = ? AND target_text = ? AND src_lang = ? AND tgt_lang = ?`,
-    [srcNorm, targetText, src, tgt]
+       SET uses = uses + 1,
+           quality = MIN(1, quality + 0.02),
+           src_lang = CASE WHEN NULLIF(src_lang, '') IS NULL THEN ? ELSE src_lang END,
+           tgt_lang = CASE WHEN NULLIF(tgt_lang, '') IS NULL THEN ? ELSE tgt_lang END,
+           last_used_at = CURRENT_TIMESTAMP
+     WHERE source_norm = ?
+       AND target_text = ?
+       AND COALESCE(NULLIF(src_lang, ''), ?) = ?
+       AND COALESCE(NULLIF(tgt_lang, ''), ?) = ?`,
+    [src, tgt, srcNorm, targetText, src, src, tgt, tgt]
   )
   if (r.changes === 0) {
     await run(
