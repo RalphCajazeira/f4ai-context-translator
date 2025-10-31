@@ -1,1 +1,5 @@
 node_modules
+
+# Ignorar cache Python em qualquer subpasta
+**/__pycache__/
+*.pyc
