@@ -235,7 +235,7 @@ async function enforceAllCapsTerms({
   const caps = extractAllCapsTerms(original)
   if (!caps.length || !out) return out
 
-  const uniqueCaps = Array.from(new Set(cpsCaps(caps)))
+  const uniqueCaps = Array.from(new Set(capsOnly(caps)))
   for (const term of uniqueCaps) {
     let t = ""
     try {
@@ -260,7 +260,7 @@ async function enforceAllCapsTerms({
   }
   return out
 }
-function cpsCaps(arr) {
+function capsOnly(arr) {
   const set = new Set()
   for (const w of arr) {
     if (/\b[\p{Lu}]{2,}\b/u.test(w)) set.add(w)
