@@ -138,9 +138,15 @@ function b_enterEditRow(tr, row) {
   const id = row.id
   tr.innerHTML = `
     <td><input type="text" name="term" value="${b_escapeAttr(row.term)}" /></td>
-    <td><input type="text" name="game" value="${b_escapeAttr(row.game || "")}" /></td>
-    <td><input type="text" name="mod" value="${b_escapeAttr(row.mod || "")}" /></td>
-    <td><input type="text" name="notes" value="${b_escapeAttr(row.notes || "")}" /></td>
+    <td><input type="text" name="game" value="${b_escapeAttr(
+      row.game || ""
+    )}" /></td>
+    <td><input type="text" name="mod" value="${b_escapeAttr(
+      row.mod || ""
+    )}" /></td>
+    <td><input type="text" name="notes" value="${b_escapeAttr(
+      row.notes || ""
+    )}" /></td>
     <td class="ta-right">
       <button type="button" class="btn btn-primary" data-action="save">Salvar</button>
       <button type="button" class="btn" data-action="cancel">Cancelar</button>
@@ -208,6 +214,15 @@ async function b_loadBlacklist(page = blacklistState.page) {
   try {
     const data = await b_fetchJSON(`/api/blacklist?${params}`)
     const items = Array.isArray(data) ? data : data.items || []
+
+    // 👇 ordena ignorando caixa/acentos e com números naturais
+    items.sort((a, b) =>
+      (a.term || "").localeCompare(b.term || "", "pt-BR", {
+        sensitivity: "base",
+        numeric: true,
+        ignorePunctuation: true,
+      })
+    )
     const meta = Array.isArray(data)
       ? { page, total_pages: 1, total: items.length }
       : data.meta || {}
@@ -278,10 +293,7 @@ function b_attachEvents() {
   let debounce = null
   blacklistSearchInput?.addEventListener("input", () => {
     clearTimeout(debounce)
-    debounce = setTimeout(
-      () => b_handleSearch(blacklistSearchInput.value),
-      250
-    )
+    debounce = setTimeout(() => b_handleSearch(blacklistSearchInput.value), 250)
   })
 
   blacklistPager?.addEventListener("click", (event) => {

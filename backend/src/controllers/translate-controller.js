@@ -619,7 +619,7 @@ class TranslateController {
               sourceText: source_text,
               approved: 0,
             },
-            orderBy: { createdAt: "desc" },
+            orderBy: { id: "desc" },
           });
           if (row?.id) {
             await prisma.translationLog.delete({ where: { id: row.id } });

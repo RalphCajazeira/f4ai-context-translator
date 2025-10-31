@@ -226,6 +226,14 @@ async function g_loadGlossary(page = glossaryState.page) {
   try {
     const data = await g_fetchJSON(`/api/glossary?${params}`)
     const items = Array.isArray(data) ? data : data.items || []
+    // 👇 ADICIONE isto (ordena ignorando maiúsc./minúsc. e acentos):
+items.sort((a, b) =>
+  (a.term_source || "").localeCompare(b.term_source || "", "pt-BR", {
+    sensitivity: "base",        // ignora caixa e acentos
+    numeric: true,              // 1 < 2 < 10
+    ignorePunctuation: true,
+  })
+)
     const meta = Array.isArray(data)
       ? { page, total_pages: 1, total: items.length }
       : data.meta || {}
