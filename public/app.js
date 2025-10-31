@@ -16,6 +16,8 @@ const btnApproveAndNext = document.querySelector("#btnApproveAndNext")
 const preserveLinesChk = document.querySelector("#preserveLines")
 
 const compareBtn = document.querySelector("#btnCompare")
+const capOptions = document.querySelector(".cap-options")
+const capToggleBtn = document.querySelector("#btnCapOptions")
 let compareActive = false
 let compareBaseline = "" // versão anterior fixa
 
@@ -25,6 +27,9 @@ const logApprovedEl = document.querySelector("#logApproved")
 const statusStack = document.querySelector("#statusStack")
 const gameInput = document.querySelector("#gameName")
 const modInput = document.querySelector("#modName")
+
+const GAME_STORAGE_KEY = "f4ai:last-game"
+const MOD_STORAGE_KEY = "f4ai:last-mod"
 
 const STATUS_ICONS = {
   success: "✔️",
@@ -114,6 +119,105 @@ function showStatus(message = "", variant = "info", { persist = false } = {}) {
   }, 4800)
 }
 
+function loadPersistedContext() {
+  try {
+    const storedGame = localStorage.getItem(GAME_STORAGE_KEY)
+    if (storedGame && gameInput) gameInput.value = storedGame
+  } catch (_) {}
+  try {
+    const storedMod = localStorage.getItem(MOD_STORAGE_KEY)
+    if (storedMod && modInput) modInput.value = storedMod
+  } catch (_) {}
+}
+
+function persistContext(key, value) {
+  try {
+    if (value) localStorage.setItem(key, value)
+    else localStorage.removeItem(key)
+  } catch (_) {}
+}
+
+function currentGame() {
+  return (gameInput?.value || "").trim()
+}
+
+function currentMod() {
+  return (modInput?.value || "").trim()
+}
+
+function ensureContext() {
+  const game = currentGame()
+  const mod = currentMod()
+  if (!game || !mod) {
+    showStatus("Informe o nome do jogo e do mod antes de continuar.", "warning")
+    if (!game && gameInput) gameInput.focus()
+    else if (!mod && modInput) modInput.focus()
+    return null
+  }
+  return { game, mod }
+}
+
+function emitContextChange() {
+  const detail = { game: currentGame(), mod: currentMod() }
+  window.dispatchEvent(new CustomEvent("contextchange", { detail }))
+}
+
+function refreshContextConsumers() {
+  const context = ensureContext()
+  if (!context) return
+  emitContextChange()
+  logState.pending.page = 1
+  logState.approved.page = 1
+  fetchPending(1)
+  fetchApprovedTM(1)
+}
+
+const logSearchInput = document.querySelector("#logSearch")
+const logPendingInfo = document.querySelector("#logPendingInfo")
+const logApprovedInfo = document.querySelector("#logApprovedInfo")
+const logPendingPager = document.querySelector("#logPendingPager")
+const logApprovedPager = document.querySelector("#logApprovedPager")
+
+const logState = {
+  search: "",
+  pending: { page: 1, totalPages: 1, total: 0 },
+  approved: { page: 1, totalPages: 1, total: 0 },
+}
+
+function updateLogMeta(kind, meta = {}) {
+  const state = logState[kind]
+  if (!state) return
+  const pageValue = Number(meta.page)
+  if (!Number.isNaN(pageValue) && pageValue > 0) {
+    state.page = pageValue
+  }
+
+  const totalPagesValue = Number(meta.total_pages)
+  if (!Number.isNaN(totalPagesValue) && totalPagesValue > 0) {
+    state.totalPages = Math.max(1, totalPagesValue)
+  } else {
+    state.totalPages = Math.max(1, state.totalPages)
+  }
+
+  const totalValue = Number(meta.total)
+  if (!Number.isNaN(totalValue) && totalValue >= 0) {
+    state.total = totalValue
+  }
+
+  const infoEl = kind === "pending" ? logPendingInfo : logApprovedInfo
+  if (infoEl) {
+    infoEl.textContent = `${state.total} itens • pág. ${state.page} de ${state.totalPages}`
+  }
+
+  const pager = kind === "pending" ? logPendingPager : logApprovedPager
+  if (pager) {
+    const prev = pager.querySelector('[data-dir="prev"]')
+    const next = pager.querySelector('[data-dir="next"]')
+    if (prev) prev.disabled = state.page <= 1
+    if (next) next.disabled = state.page >= totalPages
+  }
+}
+
 function handleError(error, fallback = "Ocorreu um erro inesperado.") {
   console.error(error)
   const detail = error?.message ? ` (${error.message})` : ""
@@ -177,6 +281,22 @@ toggleOldBtn?.addEventListener("click", () => {
   toggleOldBtn.textContent = showing ? "Exibir" : "Ocultar"
 })
 
+gameInput?.addEventListener("input", () => {
+  persistContext(GAME_STORAGE_KEY, currentGame())
+})
+gameInput?.addEventListener("change", () => {
+  persistContext(GAME_STORAGE_KEY, currentGame())
+  if (currentGame() && currentMod()) refreshContextConsumers()
+})
+
+modInput?.addEventListener("input", () => {
+  persistContext(MOD_STORAGE_KEY, currentMod())
+})
+modInput?.addEventListener("change", () => {
+  persistContext(MOD_STORAGE_KEY, currentMod())
+  if (currentGame() && currentMod()) refreshContextConsumers()
+})
+
 // ===================== TRADUÇÃO =====================
 btnTranslate?.addEventListener("click", () =>
   doTranslate({ log: true, refreshAfter: "pending" })
@@ -236,8 +356,9 @@ async function doTranslate({ log = true, refreshAfter = null } = {}) {
     showStatus("Cole ou digite um texto para traduzir.", "warning")
     return
   }
-  const gameName = (gameInput?.value || "").trim()
-  const modName = (modInput?.value || "").trim()
+  const context = ensureContext()
+  if (!context) return
+
   const payload = {
     text,
     src: srcSel.value,
@@ -245,8 +366,8 @@ async function doTranslate({ log = true, refreshAfter = null } = {}) {
     preserveLines: !!(preserveLinesChk && preserveLinesChk.checked),
     log,
     origin: "ui",
-    game: gameName || null,
-    mod: modName || null,
+    game: context.game,
+    mod: context.mod,
   }
 
   // guarda “versão anterior”
@@ -352,6 +473,13 @@ compareBtn?.addEventListener("click", () => {
   }
 })
 
+capToggleBtn?.addEventListener("click", () => {
+  if (!capOptions) return
+  const open = !capOptions.classList.contains("open")
+  capOptions.classList.toggle("open", open)
+  capToggleBtn.setAttribute("aria-expanded", open ? "true" : "false")
+})
+
 // ================= Alternativas / Logs / TM =================
 function renderAlts(items) {
   const list = altsEl
@@ -390,22 +518,94 @@ async function fetchJSON(url, opts) {
   }
   return data ?? {}
 }
-async function fetchPending() {
+async function fetchPending(page = logState.pending.page) {
+  logState.pending.page = page
+  const params = new URLSearchParams({
+    status: "pending",
+    limit: "50",
+    page: String(page),
+  })
+  if (logState.search) params.set("q", logState.search)
+  const game = currentGame()
+  if (game) params.set("game", game)
+  const mod = currentMod()
+  if (mod) params.set("mod", mod)
+
   try {
-    renderPending(await fetchJSON("/api/logs?status=pending&limit=200"))
+    const data = await fetchJSON(`/api/logs?${params}`)
+    const items = Array.isArray(data) ? data : data.items || []
+    const meta = Array.isArray(data)
+      ? { page, total_pages: 1, total: items.length, per_page: items.length }
+      : data.meta || {}
+    updateLogMeta("pending", meta)
+    renderPending(items, meta)
   } catch (e) {
     handleError(e, "Falha ao carregar traduções pendentes.")
   }
 }
-async function fetchApprovedTM() {
+async function fetchApprovedTM(page = logState.approved.page) {
+  logState.approved.page = page
+  const params = new URLSearchParams({ limit: "50", page: String(page) })
+  if (logState.search) params.set("q", logState.search)
+  const game = currentGame()
+  if (game) params.set("game", game)
+  const mod = currentMod()
+  if (mod) params.set("mod", mod)
+
   try {
-    renderApprovedTM(await fetchJSON("/api/tm?limit=200"))
+    const data = await fetchJSON(`/api/tm?${params}`)
+    const items = Array.isArray(data) ? data : data.items || []
+    const meta = Array.isArray(data)
+      ? { page, total_pages: 1, total: items.length, per_page: items.length }
+      : data.meta || {}
+    updateLogMeta("approved", meta)
+    renderApprovedTM(items, meta)
   } catch (e) {
     handleError(e, "Falha ao carregar a memória de tradução.")
   }
 }
 
-function renderPending(rows) {
+let logSearchDebounce = null
+logSearchInput?.addEventListener("input", () => {
+  clearTimeout(logSearchDebounce)
+  logSearchDebounce = setTimeout(() => {
+    logState.search = logSearchInput.value.trim()
+    logState.pending.page = 1
+    logState.approved.page = 1
+    fetchPending(1)
+    fetchApprovedTM(1)
+  }, 250)
+})
+
+function handlePagerClick(kind, dir) {
+  const state = logState[kind]
+  if (!state) return
+  if (dir === "prev" && state.page > 1) {
+    const nextPage = state.page - 1
+    if (kind === "pending") fetchPending(nextPage)
+    else fetchApprovedTM(nextPage)
+  } else if (dir === "next" && state.page < state.totalPages) {
+    const nextPage = state.page + 1
+    if (kind === "pending") fetchPending(nextPage)
+    else fetchApprovedTM(nextPage)
+  }
+}
+
+logPendingPager?.addEventListener("click", (event) => {
+  const btn = event.target.closest("button[data-dir]")
+  if (!btn) return
+  event.preventDefault()
+  handlePagerClick("pending", btn.dataset.dir)
+})
+
+logApprovedPager?.addEventListener("click", (event) => {
+  const btn = event.target.closest("button[data-dir]")
+  if (!btn) return
+  event.preventDefault()
+  handlePagerClick("approved", btn.dataset.dir)
+})
+
+function renderPending(rows = [], meta = {}) {
   if (!logPendingEl) return
   const items = Array.isArray(rows) ? rows : []
   const byId = new Map(items.map((r) => [r.id, r]))
@@ -420,9 +620,15 @@ function renderPending(rows) {
       li.className = "log-item"
       li.dataset.id = row.id
       li.innerHTML = `
-        <div class="meta">#${row.id} • ${row.origin || "api"} • ${
-        row.created_at
-      }</div>
+        <div class="meta">
+          <span class="line">#${row.id} • ${row.origin || "api"} • ${
+        row.created_at || ""
+      }</span>
+          <span class="line tags">
+            <span class="tag">🎮 ${esc(row.game || "—")}</span>
+            <span class="tag">🧩 ${esc(row.mod || "—")}</span>
+          </span>
+        </div>
         <div><b>Original</b></div>
         <textarea class="src" spellcheck="false"></textarea>
         <div><b>Tradução (editável)</b></div>
@@ -446,6 +652,8 @@ function renderPending(rows) {
             body: JSON.stringify({
               source_text: srcTA.value,
               target_text: tgtTA.value,
+              game: row.game,
+              mod: row.mod,
             }),
           })
           showStatus("Tradução pendente atualizada.", "success")
@@ -461,6 +669,8 @@ function renderPending(rows) {
             body: JSON.stringify({
               source_text: srcTA.value,
               target_text: tgtTA.value,
+              game: row.game,
+              mod: row.mod,
             }),
           })
           li.remove()
@@ -491,17 +701,28 @@ function renderPending(rows) {
     } else {
       li.querySelector(".src").value = row.source_text || ""
       li.querySelector(".tgt").value = row.target_text || ""
-      li.querySelector(".meta").textContent = `#${row.id} • ${
-        row.origin || "api"
-      } • ${row.created_at}`
+      li.dataset.id = row.id
+      const metaEl = li.querySelector(".meta")
+      if (metaEl) {
+        metaEl.innerHTML = `
+          <span class="line">#${row.id} • ${row.origin || "api"} • ${
+          row.created_at || ""
+        }</span>
+          <span class="line tags">
+            <span class="tag">🎮 ${esc(row.game || "—")}</span>
+            <span class="tag">🧩 ${esc(row.mod || "—")}</span>
+          </span>`
+      }
     }
+    li.dataset.game = row.game || ""
+    li.dataset.mod = row.mod || ""
   })
   if (logPendingEl.children.length)
     logPendingEl.removeAttribute("data-empty")
   else logPendingEl.setAttribute("data-empty", "1")
 }
 
-function renderApprovedTM(rows = []) {
+function renderApprovedTM(rows = [], meta = {}) {
   if (!logApprovedEl) return
   logApprovedEl.innerHTML = ""
   const items = Array.isArray(rows) ? rows : []
@@ -510,9 +731,15 @@ function renderApprovedTM(rows = []) {
     li.className = "log-item"
     li.dataset.id = row.id
     li.innerHTML = `
-      <div class="meta">TM #${row.id} • uses:${
-      row.uses ?? 0
-    } • quality:${Number(row.quality ?? 0.9).toFixed(2)}</div>
+      <div class="meta">
+        <span class="line">TM #${row.id} • uses:${row.uses ?? 0} • quality:${Number(
+      row.quality ?? 0.9
+    ).toFixed(2)}</span>
+        <span class="line tags">
+          <span class="tag">🎮 ${esc(row.game || "—")}</span>
+          <span class="tag">🧩 ${esc(row.mod || "—")}</span>
+        </span>
+      </div>
       <label>Original (chave normalizada)</label>
       <textarea class="src" readonly>${esc(row.source_norm)}</textarea>
       <label>Tradução (editar e salvar)</label>
@@ -644,6 +871,8 @@ async function approveCurrent({ showSuccess = true } = {}) {
     showStatus("Forneça texto original e tradução para aprovar.", "warning")
     return false
   }
+  const context = ensureContext()
+  if (!context) return false
   try {
     await fetchJSON("/api/translate/approve", {
       method: "POST",
@@ -652,6 +881,8 @@ async function approveCurrent({ showSuccess = true } = {}) {
         source_text: src,
         target_text: tgt,
         removeFromLog: true,
+        game: context.game,
+        mod: context.mod,
       }),
     })
     await fetchApprovedTM()
@@ -694,7 +925,20 @@ btnApproveAndNext?.addEventListener("click", async () => {
 
 // =================== Init ===================
 ;(async function init() {
-  if (window.initGlossaryUI) window.initGlossaryUI() // ← hook do novo glossary.js
+  loadPersistedContext()
+  if (currentGame() && currentMod()) {
+    emitContextChange()
+  } else {
+    showStatus("Defina o jogo e o mod para carregar os dados.", "info")
+  }
+
+  if (typeof window.initGlossaryUI === "function") {
+    window.initGlossaryUI()
+  }
+  if (typeof window.initBlacklistUI === "function") {
+    window.initBlacklistUI()
+  }
+
   await fetchPending()
   await fetchApprovedTM()
 })()
