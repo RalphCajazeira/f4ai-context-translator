@@ -3,8 +3,8 @@ const blacklistSearchInput = document.querySelector("#blacklistSearch")
 const blacklistInfo = document.querySelector("#blacklistInfo")
 const blacklistPager = document.querySelector("#blacklistPager")
 const blacklistForm = document.querySelector("#blackForm")
-const gameField = document.querySelector("#gameName")
-const modField = document.querySelector("#modName")
+const blacklistGameInput = document.querySelector("#gameName")
+const blacklistModInput = document.querySelector("#modName")
 
 const BLACKLIST_LIMIT = 50
 
@@ -53,8 +53,8 @@ async function b_fetchJSON(url, opts) {
 
 function b_getContext() {
   return {
-    game: (gameField?.value || "").trim(),
-    mod: (modField?.value || "").trim(),
+    game: (blacklistGameInput?.value || "").trim(),
+    mod: (blacklistModInput?.value || "").trim(),
   }
 }
 

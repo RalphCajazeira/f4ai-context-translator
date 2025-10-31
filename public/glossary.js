@@ -2,8 +2,8 @@ const glossaryTableBody = document.querySelector("#glossaryTable tbody")
 const glossarySearchInput = document.querySelector("#glossSearch")
 const glossaryInfo = document.querySelector("#glossInfo")
 const glossaryPager = document.querySelector("#glossPager")
-const gameField = document.querySelector("#gameName")
-const modField = document.querySelector("#modName")
+const glossaryGameInput = document.querySelector("#gameName")
+const glossaryModInput = document.querySelector("#modName")
 const glossaryForm = document.querySelector("#glossForm")
 
 const GLOSSARY_LIMIT = 50
@@ -53,8 +53,8 @@ async function g_fetchJSON(url, opts) {
 
 function g_getContext() {
   return {
-    game: (gameField?.value || "").trim(),
-    mod: (modField?.value || "").trim(),
+    game: (glossaryGameInput?.value || "").trim(),
+    mod: (glossaryModInput?.value || "").trim(),
   }
 }
 

@@ -214,7 +214,7 @@ function updateLogMeta(kind, meta = {}) {
     const prev = pager.querySelector('[data-dir="prev"]')
     const next = pager.querySelector('[data-dir="next"]')
     if (prev) prev.disabled = state.page <= 1
-    if (next) next.disabled = state.page >= totalPages
+    if (next) next.disabled = state.page >= state.totalPages
   }
 }
 
