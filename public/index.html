@@ -201,18 +201,20 @@
           </main>
 
           <!-- Linha inferior: logs -->
-          <div class="logs-toolbar">
-            <label class="sr-only" for="logSearch">Pesquisar nos logs</label>
-            <input
-              type="search"
-              id="logSearch"
-              placeholder="Pesquisar por texto, game ou mod"
-              autocomplete="off"
-            />
-          </div>
           <section class="logs-row">
             <section class="panel log">
-              <h3>Log de Traduções — Pendentes</h3>
+              <div class="log-header">
+                <h3>Log de Traduções — Pendentes</h3>
+                <label class="sr-only" for="logPendingSearch"
+                  >Pesquisar nas traduções pendentes</label
+                >
+                <input
+                  type="search"
+                  id="logPendingSearch"
+                  placeholder="Pesquisar pendências por texto, game ou mod"
+                  autocomplete="off"
+                />
+              </div>
               <div class="list-controls">
                 <span id="logPendingInfo" class="list-info">0 itens</span>
                 <div class="pager" id="logPendingPager">
@@ -227,7 +229,18 @@
               ></ul>
             </section>
             <section class="panel log">
-              <h3>Log de Traduções — Aprovados (Memória)</h3>
+              <div class="log-header">
+                <h3>Log de Traduções — Aprovados (Memória)</h3>
+                <label class="sr-only" for="logApprovedSearch"
+                  >Pesquisar nas traduções aprovadas</label
+                >
+                <input
+                  type="search"
+                  id="logApprovedSearch"
+                  placeholder="Pesquisar aprovações por texto, game ou mod"
+                  autocomplete="off"
+                />
+              </div>
               <div class="list-controls">
                 <span id="logApprovedInfo" class="list-info">0 itens</span>
                 <div class="pager" id="logApprovedPager">
