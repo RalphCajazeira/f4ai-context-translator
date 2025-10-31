@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "node --watch backend/server.js",
     "init:db": "node backend/db-init.js",
-    "export:dataset": "node scripts/export-dataset.js"
+    "export:dataset": "node scripts/export-dataset.js",
+    "test": "node --test"
   },
   "dependencies": {
     "cors": "^2.8.5",
