@@ -66,12 +66,16 @@ model TranslationLog {
   game       String?
   mod        String?
   searchText String   @map("search_text") @default("")
+  batchId    Int?     @map("batch_id")
+  batchPos   Int?     @map("batch_pos")
+  request    XTranslatorRequest? @relation(fields: [batchId], references: [id])
   createdAt  DateTime @map("created_at") @default(now())
   updatedAt  DateTime @map("updated_at") @updatedAt
 
   @@map("translation_logs")
   @@index([createdAt, id])
   @@index([searchText])
+  @@index([origin])
 }
 
 model Segment {
@@ -87,4 +91,21 @@ model Segment {
   updatedAt  DateTime @map("updated_at") @updatedAt
 
   @@map("segments")
+}
+
+model XTranslatorRequest {
+  id          Int       @id @default(autoincrement())
+  externalId  String?   @map("external_id")
+  model       String?
+  prompt      String?
+  rawSource   String?   @map("raw_source")
+  rawResponse String?   @map("raw_response")
+  status      String    @default("completed")
+  createdAt   DateTime  @map("created_at") @default(now())
+  updatedAt   DateTime  @map("updated_at") @updatedAt
+
+  items TranslationLog[]
+
+  @@map("xtranslator_requests")
+  @@index([createdAt])
 }

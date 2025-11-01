@@ -46,11 +46,15 @@ CREATE TABLE IF NOT EXISTS translation_logs (
   approved INTEGER DEFAULT 0,
   game TEXT,
   mod TEXT,
+  search_text TEXT DEFAULT '',
+  batch_id INTEGER,
+  batch_pos INTEGER,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_logs_created ON translation_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_logs_origin ON translation_logs(origin);
 
 CREATE TABLE IF NOT EXISTS segments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,3 +68,18 @@ CREATE TABLE IF NOT EXISTS segments (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS xtranslator_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  external_id TEXT,
+  model TEXT,
+  prompt TEXT,
+  raw_source TEXT,
+  raw_response TEXT,
+  status TEXT DEFAULT 'completed',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_xtranslator_requests_created
+  ON xtranslator_requests(created_at DESC);

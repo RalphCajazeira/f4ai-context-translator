@@ -119,6 +119,10 @@ function showStatus(message = "", variant = "info", { persist = false } = {}) {
   }, 4800)
 }
 
+if (typeof window !== "undefined") {
+  window.showStatus = showStatus
+}
+
 function loadPersistedContext() {
   try {
     const storedGame = localStorage.getItem(GAME_STORAGE_KEY)
@@ -411,6 +415,10 @@ function setPlainText(text) {
   setCaretIndex(editor, Math.min(caret, editor.textContent.length))
 }
 
+if (typeof window !== "undefined") {
+  window.setPlainText = setPlainText
+}
+
 // quebra por limites de palavra, preservando separadores
 const tokenize = (s) => s.split(/\b/)
 
@@ -518,6 +526,10 @@ async function fetchJSON(url, opts) {
   }
   return data ?? {}
 }
+
+if (typeof window !== "undefined") {
+  window.fetchJSON = fetchJSON
+}
 async function fetchPending(page = logState.pending.page) {
   logState.pending.page = page
   const params = new URLSearchParams({
@@ -525,6 +537,7 @@ async function fetchPending(page = logState.pending.page) {
     limit: "50",
     page: String(page),
   })
+  params.set("origin", "ui")
   if (logState.pending.search) params.set("q", logState.pending.search)
   const game = currentGame()
   if (game) params.set("game", game)
@@ -934,6 +947,10 @@ btnApproveAndNext?.addEventListener("click", async () => {
   }
   if (typeof window.initBlacklistUI === "function") {
     window.initBlacklistUI()
+  }
+
+  if (typeof window.initXTranslatorUI === "function") {
+    await window.initXTranslatorUI()
   }
 
   await fetchPending()
