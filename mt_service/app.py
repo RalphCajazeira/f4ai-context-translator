@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 import os, requests
 
 USE_TRANSFORMERS = True
@@ -45,7 +45,7 @@ class LLMReq(BaseModel):
     src: Optional[str] = "en"
     tgt: Optional[str] = "pt"
     shots: List[LLMShot] = []
-    glossary: List[Dict[str, str]] = []
+    glossary: List[Dict[str, Any]] = []
 
 def build_prompt(text: str, src: str, tgt: str, shots: List[LLMShot], glossary: List[Dict[str,str]]) -> str:
     lines = []
