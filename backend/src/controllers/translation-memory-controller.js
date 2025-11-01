@@ -24,6 +24,22 @@ function normalizeNullable(value) {
   return trimmed.length ? trimmed : null;
 }
 
+function buildCaseVariants(value) {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) return [];
+
+  const variants = new Set([trimmed]);
+  variants.add(trimmed.toLowerCase());
+  variants.add(trimmed.toUpperCase());
+
+  const [first] = trimmed;
+  if (first) {
+    variants.add(first.toUpperCase() + trimmed.slice(1).toLowerCase());
+  }
+
+  return Array.from(variants).filter(Boolean);
+}
+
 function buildLanguageFilter(field, lang) {
   const trimmed = normalizeNullable(lang) ?? "";
   return {
@@ -49,12 +65,35 @@ class TranslationMemoryController {
 
     const filters = [];
 
-    if (q) {
-      filters.push({
-        sourceNorm: {
-          contains: norm(q),
-        },
-      });
+    const rawSearch = String(q ?? "").trim();
+    if (rawSearch) {
+      const normalizedSearch = norm(rawSearch);
+      const orFilters = [];
+
+      if (normalizedSearch) {
+        orFilters.push({
+          sourceNorm: {
+            contains: normalizedSearch,
+          },
+        });
+      }
+
+      const variants = new Set([
+        ...buildCaseVariants(rawSearch),
+        ...buildCaseVariants(normalizedSearch),
+      ]);
+
+      for (const variant of variants) {
+        orFilters.push({
+          targetText: {
+            contains: variant,
+          },
+        });
+      }
+
+      if (orFilters.length) {
+        filters.push({ OR: orFilters });
+      }
     }
 
     if (src) filters.push({ srcLang: src });
