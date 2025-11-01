@@ -15,7 +15,6 @@ import {
   applyCaseLike,
 } from "@/services/case.service.js";
 import {
-  normalizeForTm,
   pickGlossaryMatches,
   pickBlacklistMatches,
   buildContextBlock,
@@ -23,72 +22,9 @@ import {
   enforceAllCapsTerms,
   buildWBRegex,
 } from "@/services/translation-rules.service.js";
+import { promoteViaTm } from "@/services/tm.service.js";
 import { AppError } from "@/utils/app-error.js";
 import { buildSearchVector } from "@/utils/search.js";
-
-function tokenCosine(a, b) {
-  const A = normalizeForTm(a).split(/\s+/).filter(Boolean);
-  const B = normalizeForTm(b).split(/\s+/).filter(Boolean);
-  if (!A.length || !B.length) return 0;
-  const set = new Set([...A, ...B]);
-  const va = [];
-  const vb = [];
-  for (const t of set) {
-    const ca = A.reduce((n, x) => n + (x === t), 0);
-    const cb = B.reduce((n, x) => n + (x === t), 0);
-    va.push(ca);
-    vb.push(cb);
-  }
-  let dot = 0;
-  let na = 0;
-  let nb = 0;
-  for (let i = 0; i < va.length; i++) {
-    dot += va[i] * vb[i];
-    na += va[i] ** 2;
-    nb += vb[i] ** 2;
-  }
-  return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
-}
-
-function adaptToggleOnOff(fromSourceNorm, fromTarget, toOriginal) {
-  if (!fromSourceNorm || !fromTarget || !toOriginal) return null;
-  let out = String(fromTarget);
-  const srcNew = String(toOriginal);
-  const PT_ON = "LIGADO";
-  const PT_OFF = "DESLIGADO";
-
-  const headerNew = srcNew.match(/:\s*(ON|OFF)\b/i)?.[1]?.toUpperCase();
-  if (headerNew) {
-    const desired = headerNew === "ON" ? PT_ON : PT_OFF;
-    out = out.replace(
-      /(:\s*)(ATIVADO|DESATIVADO|LIGADO|DESLIGADO)\b/iu,
-      `$1${desired}`
-    );
-  }
-
-  const whenMatches = [...srcNew.matchAll(/\bWhen\s+(ON|OFF)\b/gi)];
-  if (whenMatches.length > 0) {
-    let idx = 0;
-    out = out.replace(
-      /\b(Quando)\s+(ATIVADO|DESATIVADO|LIGADO|DESLIGADO)\b/gi,
-      (m, q) => {
-        const mSrc = whenMatches[idx++];
-        if (!mSrc) return m;
-        const desired = mSrc[1].toUpperCase() === "ON" ? PT_ON : PT_OFF;
-        return `${q} ${desired}`;
-      }
-    );
-    const needOn = whenMatches.some((m) => m[1].toUpperCase() === "ON");
-    const needOff = whenMatches.some((m) => m[1].toUpperCase() === "OFF");
-    if (!/\bQuando\s+(ATIVADO|DESATIVADO|LIGADO|DESLIGADO)\b/i.test(out)) {
-      if (needOn) out = out.replace(/\bQuando\b/i, `Quando ${PT_ON}`);
-      if (needOff) out = out.replace(/\bQuando\b/i, `Quando ${PT_OFF}`);
-    }
-  }
-
-  out = out.replace(/\bATIVADO\b/gi, PT_ON).replace(/\bDESATIVADO\b/gi, PT_OFF);
-  return out;
-}
 
 function normalizeOptional(value) {
   if (value === undefined || value === null) return null;
@@ -208,7 +144,6 @@ class TranslateController {
     }
 
     try {
-      const srcNorm = normalizeForTm(text);
       let best = "";
       let engine = "ai";
 
@@ -218,39 +153,24 @@ class TranslateController {
         String(process.env.TM_FUZZY_REQUIRE_PATCH ?? "true").toLowerCase() ===
         "true";
 
-      const tmExact = (tmPairs || []).find((p) => p.sourceNorm === srcNorm);
-      if (tmExact) {
-        best = applyCaseLike(text, tmExact.targetText);
+      const tmConfig = {
+        fuzzyPromoteMin: FUZZY_PROMOTE_MIN,
+        maxLenDelta: MAX_LEN_DELTA,
+        requirePatch: REQUIRE_PATCH,
+      };
+
+      const tmResult = promoteViaTm({ text, tmPairs, ...tmConfig });
+      if (tmResult?.translation) {
+        best = tmResult.translation;
         engine = "tm";
-        if (process.env.MT_LOG !== "0")
-          console.log("[translate] Hit TM exata. Pulando chamada à IA.");
-      } else {
-        let top = null;
-        for (const p of tmPairs || []) {
-          const sc = tokenCosine(srcNorm, p.sourceNorm || "");
-          if (!top || sc > top.sc) top = { ...p, sc };
-        }
-        if (top) {
-          const lenA = srcNorm.length;
-          const lenB = (top.sourceNorm || "").length;
-          const lenOk =
-            Math.abs(lenA - lenB) / Math.max(1, Math.max(lenA, lenB)) <=
-            MAX_LEN_DELTA;
-          const patched = adaptToggleOnOff(top.sourceNorm, top.targetText, text);
-          const changed = patched && patched !== top.targetText;
-          if (
-            top.sc >= FUZZY_PROMOTE_MIN &&
-            lenOk &&
-            (!REQUIRE_PATCH || changed)
-          ) {
-            best = applyCaseLike(text, patched || top.targetText);
-            engine = "tm";
-            if (process.env.MT_LOG !== "0") {
-              console.log(
-                "[translate] Promovido via TM fuzzy (score:",
-                top.sc.toFixed(3) + ")"
-              );
-            }
+        if (process.env.MT_LOG !== "0") {
+          if (tmResult.type === "exact") {
+            console.log("[translate] Hit TM exata. Pulando chamada à IA.");
+          } else {
+            console.log(
+              "[translate] Promovido via TM fuzzy (score:",
+              (tmResult.score ?? 0).toFixed(3) + ")"
+            );
           }
         }
       }
@@ -290,6 +210,8 @@ class TranslateController {
                 glossary: matchedGlossary,
                 contextBlock,
                 noTranslate: matchedNoTranslate,
+                tmPairs,
+                tmConfig,
               })
             : await translateWithContext({
                 text: contextualText,
