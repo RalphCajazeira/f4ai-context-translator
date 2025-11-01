@@ -210,6 +210,7 @@ class TranslateController {
     try {
       const srcNorm = normalizeForTm(text);
       let best = "";
+      let engine = "ai";
 
       const FUZZY_PROMOTE_MIN = Number(process.env.TM_FUZZY_PROMOTE_MIN ?? 0.92);
       const MAX_LEN_DELTA = Number(process.env.TM_FUZZY_MAX_LEN_DELTA ?? 0.1);
@@ -220,6 +221,7 @@ class TranslateController {
       const tmExact = (tmPairs || []).find((p) => p.sourceNorm === srcNorm);
       if (tmExact) {
         best = applyCaseLike(text, tmExact.targetText);
+        engine = "tm";
         if (process.env.MT_LOG !== "0")
           console.log("[translate] Hit TM exata. Pulando chamada à IA.");
       } else {
@@ -242,6 +244,7 @@ class TranslateController {
             (!REQUIRE_PATCH || changed)
           ) {
             best = applyCaseLike(text, patched || top.targetText);
+            engine = "tm";
             if (process.env.MT_LOG !== "0") {
               console.log(
                 "[translate] Promovido via TM fuzzy (score:",
@@ -333,10 +336,18 @@ class TranslateController {
           data: {
             sourceText: text,
             targetText: best,
+            engine,
             origin: logOrigin,
             game,
             mod,
-            searchText: buildSearchVector(text, best, logOrigin, game, mod),
+            searchText: buildSearchVector(
+              text,
+              best,
+              logOrigin,
+              engine,
+              game,
+              mod
+            ),
           },
         });
       }
@@ -378,16 +389,25 @@ class TranslateController {
         );
       }
       const best = (suggestions && suggestions[0]?.text) || "";
+      const engine = best ? "tm" : "ai";
       if (log) {
         const logOrigin = origin || "api";
         await prisma.translationLog.create({
           data: {
             sourceText: text,
             targetText: best,
+            engine,
             origin: logOrigin,
             game,
             mod,
-            searchText: buildSearchVector(text, best, logOrigin, game, mod),
+            searchText: buildSearchVector(
+              text,
+              best,
+              logOrigin,
+              engine,
+              game,
+              mod
+            ),
           },
         });
       }

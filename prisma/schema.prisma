@@ -61,6 +61,7 @@ model TranslationLog {
   id         Int      @id @default(autoincrement())
   sourceText String   @map("source_text")
   targetText String   @map("target_text")
+  engine     String   @default("ai")
   origin     String   @default("ui")
   approved   Int      @default(0)
   game       String?

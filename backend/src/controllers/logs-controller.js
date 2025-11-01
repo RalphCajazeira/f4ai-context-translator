@@ -162,6 +162,7 @@ class LogsController {
             nextSource,
             nextTarget,
             current.origin,
+            current.engine ?? "ai",
             nextGame ?? "",
             nextMod ?? ""
           ),
@@ -203,6 +204,7 @@ class LogsController {
       sourceText,
       targetText,
       log.origin,
+      log.engine ?? "ai",
       gameValue ?? "",
       modValue ?? ""
     )

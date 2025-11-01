@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS translation_logs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source_text TEXT NOT NULL,
   target_text TEXT NOT NULL,
+  engine TEXT DEFAULT 'ai',
   origin TEXT DEFAULT 'ui',
   approved INTEGER DEFAULT 0,
   game TEXT,

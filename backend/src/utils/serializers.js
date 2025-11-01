@@ -64,6 +64,7 @@ function serializeTranslationLog(entry) {
     id: entry.id,
     source_text: entry.sourceText,
     target_text: entry.targetText,
+    engine: entry.engine ?? "ai",
     origin: entry.origin ?? "ui",
     approved: entry.approved ?? 0,
     game: entry.game ?? null,

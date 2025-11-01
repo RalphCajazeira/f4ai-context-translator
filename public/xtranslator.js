@@ -271,14 +271,20 @@
       const li = document.createElement("li")
       li.className = "log-item"
       li.dataset.id = row.id
+      const engineLabel =
+        String(row.engine || "ai").toLowerCase() === "tm" ? "TM" : "IA"
+      const { game: ctxGame, mod: ctxMod } = getContext()
+      const displayGame = row.game || ctxGame || "—"
+      const displayMod = row.mod || ctxMod || "—"
       li.innerHTML = `
         <div class="meta">
           <span class="line">#${row.id} • ${escapeHtml(row.origin || "xtranslator")} • ${
         row.created_at || ""
       }</span>
           <span class="line tags">
-            <span class="tag tag-game">🎮 ${escapeHtml(row.game || "—")}</span>
-            <span class="tag tag-mod">🧩 ${escapeHtml(row.mod || "—")}</span>
+            <span class="tag tag-engine">${engineLabel}</span>
+            <span class="tag tag-game">🎮 ${escapeHtml(displayGame)}</span>
+            <span class="tag tag-mod">🧩 ${escapeHtml(displayMod)}</span>
           </span>
         </div>
         <div><b>Original</b></div>
@@ -395,14 +401,20 @@
       const li = document.createElement("li")
       li.className = "log-item"
       li.dataset.id = row.id
+      const engineLabel =
+        String(row.engine || "ai").toLowerCase() === "tm" ? "TM" : "IA"
+      const { game: ctxGame, mod: ctxMod } = getContext()
+      const displayGame = row.game || ctxGame || "—"
+      const displayMod = row.mod || ctxMod || "—"
       li.innerHTML = `
         <div class="meta">
           <span class="line">#${row.id} • ${escapeHtml(row.origin || "xtranslator")} • ${
         row.updated_at || row.created_at || ""
       }</span>
           <span class="line tags">
-            <span class="tag tag-game">🎮 ${escapeHtml(row.game || "—")}</span>
-            <span class="tag tag-mod">🧩 ${escapeHtml(row.mod || "—")}</span>
+            <span class="tag tag-engine">${engineLabel}</span>
+            <span class="tag tag-game">🎮 ${escapeHtml(displayGame)}</span>
+            <span class="tag tag-mod">🧩 ${escapeHtml(displayMod)}</span>
           </span>
         </div>
         <div><b>Original</b></div>
