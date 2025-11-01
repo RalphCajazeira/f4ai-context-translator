@@ -69,10 +69,19 @@ class LogsController {
     if (searchTerm) {
       const orFilters = [{ searchText: { contains: searchTerm } }]
       if (rawSearch) {
-        orFilters.push(
-          { sourceText: { contains: rawSearch } },
-          { targetText: { contains: rawSearch } }
-        )
+        const caseVariants = new Set([
+          rawSearch,
+          rawSearch.toLowerCase(),
+          rawSearch.toUpperCase(),
+          rawSearch[0]
+            ? rawSearch[0].toUpperCase() + rawSearch.slice(1).toLowerCase()
+            : rawSearch,
+        ])
+
+        for (const variant of caseVariants) {
+          orFilters.push({ sourceText: { contains: variant } })
+          orFilters.push({ targetText: { contains: variant } })
+        }
       }
       filters.push({ OR: orFilters })
     }
