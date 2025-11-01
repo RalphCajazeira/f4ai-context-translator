@@ -1,6 +1,3 @@
-import { translatePreservingLines } from "@/services/preserve-lines.service.js";
-import { translateWithContext } from "@/services/mt-client.service.js";
-
 function extractUserMessage(messages = []) {
   if (!Array.isArray(messages)) return "";
   const userMsg = messages.find((message) => message && message.role === "user");
@@ -59,39 +56,6 @@ function composeFromItems(items = [], separators = []) {
   return pieces.join("");
 }
 
-async function translateItem({
-  text,
-  src,
-  tgt,
-  shots = [],
-  glossary = [],
-  contextBlock = "",
-  noTranslate = [],
-  preserveLines = true,
-}) {
-  const normalized = normalizeMarkers(text);
-  if (!normalized.trim()) return normalizeMarkers(text);
-  if (preserveLines) {
-    return translatePreservingLines({
-      text: normalized,
-      src,
-      tgt,
-      shots,
-      glossary,
-      contextBlock,
-      noTranslate,
-    });
-  }
-  return translateWithContext({
-    text: normalized,
-    src,
-    tgt,
-    shots,
-    glossary,
-    noTranslate,
-  });
-}
-
 export {
   extractUserMessage,
   extractPrompt,
@@ -100,5 +64,4 @@ export {
   restoreMarkers,
   splitIntoItems,
   composeFromItems,
-  translateItem,
 };

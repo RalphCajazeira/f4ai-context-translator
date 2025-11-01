@@ -7,7 +7,6 @@ import {
   extractText,
   splitIntoItems,
   composeFromItems,
-  translateItem,
   restoreMarkers,
   normalizeMarkers,
 } from "@/services/xtranslator.service.js";
@@ -35,6 +34,42 @@ function buildGameModFilters(game) {
   }
 
   return filters;
+}
+
+function normalizeNewlines(value = "") {
+  return String(value ?? "").replace(/\r\n/g, "\n");
+}
+
+function describeStructure(value = "") {
+  const normalized = normalizeNewlines(value);
+  const lines = normalized.split("\n");
+  return {
+    normalized,
+    lines,
+    blankMask: lines.map((line) => line.trim().length === 0),
+  };
+}
+
+function structuresMatch(source = "", candidate = "") {
+  const src = describeStructure(source);
+  const tgt = describeStructure(candidate);
+  if (src.lines.length !== tgt.lines.length) return false;
+  for (let i = 0; i < src.lines.length; i += 1) {
+    if (src.blankMask[i] !== tgt.blankMask[i]) return false;
+  }
+  return true;
+}
+
+function sanitizeSegment(segment = "", original = "") {
+  const originalNormalized = normalizeNewlines(original);
+  let value = normalizeNewlines(segment);
+  if (!originalNormalized.startsWith("\n") && value.startsWith("\n")) {
+    value = value.slice(1);
+  }
+  if (!originalNormalized.endsWith("\n") && value.endsWith("\n")) {
+    value = value.slice(0, -1);
+  }
+  return value;
 }
 
 class XTranslatorController {
@@ -224,97 +259,89 @@ class XTranslatorController {
     );
 
     if (aiItems.length) {
-      const aiMode = String(
-        process.env.XTRANSLATOR_AI_MODE || "block"
-      ).toLowerCase();
-      const useLineMode = aiMode === "line";
-
       const startMarker = (index) => `⟪XT_ITEM_${index}_IN⟫`;
       const endMarker = (index) => `⟪XT_ITEM_${index}_OUT⟫`;
 
-      if (useLineMode || aiItems.length === 1) {
-        for (const item of aiItems) {
-          const drafted = await translateItem({
-            text: item.original,
-            src,
-            tgt,
-            shots,
-            preserveLines: true,
-            glossary: matchedGlossary,
-            contextBlock,
-            noTranslate: matchedNoTranslate,
-          });
+      const segments = aiItems
+        .map(
+          (item) =>
+            `${startMarker(item.index)}\n${item.normalized}\n${endMarker(item.index)}`
+        )
+        .join("\n\n");
 
-          translations[item.index] =
-            (await postProcessTranslation(item.normalized, drafted)) ||
-            item.normalized;
-          translationEngines[item.index] = "ai";
-        }
-      } else {
-        const segments = aiItems
-          .map(
-            (item) =>
-              `${startMarker(item.index)}\n${item.normalized}\n${endMarker(item.index)}`
-          )
-          .join("\n\n");
+      const markerList = aiItems.flatMap((item) => [
+        startMarker(item.index),
+        endMarker(item.index),
+      ]);
+      const aiNoTranslate = Array.from(
+        new Set([...matchedNoTranslate, ...markerList])
+      );
 
-        const markerList = aiItems.flatMap((item) => [
-          startMarker(item.index),
-          endMarker(item.index),
-        ]);
-        const aiNoTranslate = Array.from(
-          new Set([...matchedNoTranslate, ...markerList])
-        );
+      let aiOutput = segments;
+      if (segments.trim()) {
+        const contextualSegments = contextBlock
+          ? `${contextBlock}\n\n${segments}`
+          : segments;
+        aiOutput = await translateWithContext({
+          text: contextualSegments,
+          src,
+          tgt,
+          shots,
+          glossary: matchedGlossary,
+          noTranslate: aiNoTranslate,
+        });
+      }
 
-        let aiOutput = segments;
-        if (segments.trim()) {
-          const contextualSegments = contextBlock
-            ? `${contextBlock}\n\n${segments}`
-            : segments;
-          aiOutput = await translateWithContext({
-            text: contextualSegments,
-            src,
-            tgt,
-            shots,
-            glossary: matchedGlossary,
-            noTranslate: aiNoTranslate,
-          });
+      const outText = String(aiOutput || "");
+      let cursor = 0;
+
+      for (const item of aiItems) {
+        const start = startMarker(item.index);
+        const end = endMarker(item.index);
+        const startIdx = outText.indexOf(start, cursor);
+        let extracted = "";
+        if (startIdx !== -1) {
+          const contentStart = startIdx + start.length;
+          const endIdx = outText.indexOf(end, contentStart);
+          if (endIdx !== -1) {
+            extracted = outText.slice(contentStart, endIdx);
+            cursor = endIdx + end.length;
+          }
         }
 
-        const outText = String(aiOutput || segments);
-        let cursor = 0;
+        const cleaned = sanitizeSegment(extracted, item.normalized);
+        const normalizedCandidate = normalizeNewlines(cleaned);
+        let accepted = false;
 
-        for (const item of aiItems) {
-          const start = startMarker(item.index);
-          const end = endMarker(item.index);
-          const startIdx = outText.indexOf(start, cursor);
-          let extracted = "";
-          if (startIdx !== -1) {
-            const contentStart = startIdx + start.length;
-            const endIdx = outText.indexOf(end, contentStart);
-            if (endIdx !== -1) {
-              extracted = outText.slice(contentStart, endIdx).trim();
-              cursor = endIdx + end.length;
-            }
+        if (
+          normalizedCandidate &&
+          structuresMatch(item.normalized, normalizedCandidate)
+        ) {
+          const processed = await postProcessTranslation(
+            item.normalized,
+            normalizedCandidate
+          );
+          const processedNormalized = normalizeNewlines(processed);
+          if (
+            processedNormalized &&
+            structuresMatch(item.normalized, processedNormalized)
+          ) {
+            translations[item.index] = processedNormalized;
+            translationEngines[item.index] = "ai";
+            accepted = true;
           }
+        }
 
-          if (!extracted) {
-            extracted = await translateItem({
-              text: item.original,
-              src,
-              tgt,
-              shots,
-              preserveLines: true,
-              glossary: matchedGlossary,
-              contextBlock,
-              noTranslate: matchedNoTranslate,
-            });
+        if (!accepted) {
+          translations[item.index] = item.normalized;
+          translationEngines[item.index] = "source";
+          if (process.env.MT_LOG !== "0") {
+            console.warn(
+              "[xtranslator] IA retornou item inválido — mantendo texto original (idx:",
+              item.index,
+              ")"
+            );
           }
-
-          translations[item.index] =
-            (await postProcessTranslation(item.normalized, extracted)) ||
-            item.normalized;
-          translationEngines[item.index] = "ai";
         }
       }
     }
