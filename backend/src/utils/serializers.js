@@ -68,6 +68,8 @@ function serializeTranslationLog(entry) {
     approved: entry.approved ?? 0,
     game: entry.game ?? null,
     mod: entry.mod ?? null,
+    batch_id: entry.batchId ?? null,
+    batch_pos: entry.batchPos ?? null,
     created_at: toISO(entry.createdAt),
     updated_at: toISO(entry.updatedAt),
   };

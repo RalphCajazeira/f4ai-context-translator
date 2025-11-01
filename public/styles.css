@@ -526,8 +526,71 @@ footer {
   overflow-y: auto;
   padding-bottom: 1.5rem;
 }
+
+.xtranslator-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.request-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.request-item {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.85rem;
+  background: rgba(15, 24, 38, 0.88);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.request-item details {
+  background: rgba(13, 22, 33, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 10px;
+  padding: 0.5rem 0.75rem;
+}
+
+.request-item details summary {
+  cursor: pointer;
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+
+.request-item pre {
+  margin: 0.5rem 0 0;
+  background: transparent;
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.request-item .meta {
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+}
+
+.request-item .meta .line {
+  display: block;
+}
+
+.request-item .meta .tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+}
 #logPending,
-#logApproved {
+#logApproved,
+.log-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -583,7 +646,8 @@ footer {
 }
 
 #logPending[data-empty]::before,
-#logApproved[data-empty]::before {
+#logApproved[data-empty]::before,
+.log-list[data-empty]::before {
   content: attr(data-empty-label);
   display: block;
   padding: 0.75rem;

@@ -36,6 +36,7 @@ class LogsController {
       mod,
       q = "",
       page = "1",
+      origin = "ui",
     } = request.query
 
     response.set(
@@ -46,12 +47,19 @@ class LogsController {
     response.set("Expires", "0")
 
     const filters = []
+    const normalizedOrigin =
+      origin && typeof origin === "string" ? origin.trim() : ""
+
     if (all === "1") {
       // no filter
     } else if (STATUS_MAP[status] !== undefined) {
       filters.push({ approved: STATUS_MAP[status] })
     } else {
       filters.push({ approved: STATUS_MAP.pending })
+    }
+
+    if (normalizedOrigin && normalizedOrigin !== "all" && all !== "1") {
+      filters.push({ origin: normalizedOrigin })
     }
 
     const gameFilter = normalizeNullable(game)

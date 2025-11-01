@@ -65,6 +65,9 @@
         <button class="app-tab" data-tab="tools" role="tab" aria-selected="false">
           Ferramentas
         </button>
+        <button class="app-tab" data-tab="xtranslator" role="tab" aria-selected="false">
+          xTranslator
+        </button>
       </nav>
 
       <div class="tab-panels">
@@ -365,6 +368,95 @@
             </div>
           </div>
         </section>
+
+        <section class="tab-panel" id="tab-xtranslator" role="tabpanel" aria-hidden="true">
+          <div class="xtranslator-wrap">
+            <section class="panel log">
+              <div class="log-header">
+                <h3>Requisições do xTranslator</h3>
+                <label class="sr-only" for="xtRequestSearch"
+                  >Pesquisar requisições recebidas</label
+                >
+                <input
+                  type="search"
+                  id="xtRequestSearch"
+                  placeholder="Pesquisar por prompt ou texto"
+                  autocomplete="off"
+                />
+              </div>
+              <div class="list-controls">
+                <span id="xtRequestInfo" class="list-info">0 itens</span>
+                <button class="btn btn-secondary" type="button" id="xtRequestRefresh">
+                  Atualizar
+                </button>
+              </div>
+              <ul
+                id="xtRequestList"
+                class="request-list log-list"
+                data-empty
+                data-empty-label="Nenhuma requisição recebida."
+              ></ul>
+            </section>
+
+            <section class="logs-row">
+              <section class="panel log">
+                <div class="log-header">
+                  <h3>Itens xTranslator — Pendentes</h3>
+                  <label class="sr-only" for="xtLogPendingSearch"
+                    >Pesquisar itens pendentes</label
+                  >
+                  <input
+                    type="search"
+                    id="xtLogPendingSearch"
+                    placeholder="Pesquisar itens pendentes por texto, game ou mod"
+                    autocomplete="off"
+                  />
+                </div>
+                <div class="list-controls">
+                  <span id="xtLogPendingInfo" class="list-info">0 itens</span>
+                  <div class="pager" id="xtLogPendingPager">
+                    <button type="button" class="btn btn-ghost" data-dir="prev" aria-label="Página anterior">◀</button>
+                    <button type="button" class="btn btn-ghost" data-dir="next" aria-label="Próxima página">▶</button>
+                  </div>
+                </div>
+                <ul
+                  id="xtLogPending"
+                  class="log-list"
+                  data-empty
+                  data-empty-label="Nenhum item pendente no momento."
+                ></ul>
+              </section>
+
+              <section class="panel log">
+                <div class="log-header">
+                  <h3>Itens xTranslator — Aprovados</h3>
+                  <label class="sr-only" for="xtLogApprovedSearch"
+                    >Pesquisar itens aprovados</label
+                  >
+                  <input
+                    type="search"
+                    id="xtLogApprovedSearch"
+                    placeholder="Pesquisar itens aprovados por texto, game ou mod"
+                    autocomplete="off"
+                  />
+                </div>
+                <div class="list-controls">
+                  <span id="xtLogApprovedInfo" class="list-info">0 itens</span>
+                  <div class="pager" id="xtLogApprovedPager">
+                    <button type="button" class="btn btn-ghost" data-dir="prev" aria-label="Página anterior">◀</button>
+                    <button type="button" class="btn btn-ghost" data-dir="next" aria-label="Próxima página">▶</button>
+                  </div>
+                </div>
+                <ul
+                  id="xtLogApproved"
+                  class="log-list"
+                  data-empty
+                  data-empty-label="Nenhum item aprovado ainda."
+                ></ul>
+              </section>
+            </section>
+          </div>
+        </section>
       </div>
 
       <footer>
@@ -378,6 +470,7 @@
     <!-- Scripts -->
     <script src="/glossary.js"></script>
     <script src="/blacklist.js"></script>
+    <script src="/xtranslator.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>
