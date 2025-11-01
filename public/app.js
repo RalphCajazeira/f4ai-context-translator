@@ -150,15 +150,7 @@ function currentMod() {
 }
 
 function ensureContext() {
-  const game = currentGame()
-  const mod = currentMod()
-  if (!game || !mod) {
-    showStatus("Informe o nome do jogo e do mod antes de continuar.", "warning")
-    if (!game && gameInput) gameInput.focus()
-    else if (!mod && modInput) modInput.focus()
-    return null
-  }
-  return { game, mod }
+  return { game: currentGame(), mod: currentMod() }
 }
 
 function emitContextChange() {
@@ -167,8 +159,6 @@ function emitContextChange() {
 }
 
 function refreshContextConsumers() {
-  const context = ensureContext()
-  if (!context) return
   emitContextChange()
   logState.pending.page = 1
   logState.approved.page = 1
@@ -361,7 +351,6 @@ async function doTranslate({ log = true, refreshAfter = null } = {}) {
     return
   }
   const context = ensureContext()
-  if (!context) return
 
   const payload = {
     text,
@@ -370,8 +359,8 @@ async function doTranslate({ log = true, refreshAfter = null } = {}) {
     preserveLines: !!(preserveLinesChk && preserveLinesChk.checked),
     log,
     origin: "ui",
-    game: context.game,
-    mod: context.mod,
+    game: context.game || null,
+    mod: context.mod || null,
   }
 
   // guarda “versão anterior”
@@ -882,7 +871,6 @@ async function approveCurrent({ showSuccess = true } = {}) {
     return false
   }
   const context = ensureContext()
-  if (!context) return false
   try {
     await fetchJSON("/api/translate/approve", {
       method: "POST",
@@ -891,8 +879,8 @@ async function approveCurrent({ showSuccess = true } = {}) {
         source_text: src,
         target_text: tgt,
         removeFromLog: true,
-        game: context.game,
-        mod: context.mod,
+        game: context.game || null,
+        mod: context.mod || null,
       }),
     })
     await fetchApprovedTM()
@@ -936,11 +924,13 @@ btnApproveAndNext?.addEventListener("click", async () => {
 // =================== Init ===================
 ;(async function init() {
   loadPersistedContext()
-  if (currentGame() && currentMod()) {
-    emitContextChange()
-  } else {
-    showStatus("Defina o jogo e o mod para carregar os dados.", "info")
+  if (!currentGame() && !currentMod()) {
+    showStatus(
+      "Defina jogo e/ou mod para filtrar os dados (opcional).",
+      "info"
+    )
   }
+  emitContextChange()
 
   if (typeof window.initGlossaryUI === "function") {
     window.initGlossaryUI()

@@ -179,11 +179,6 @@ function g_enterEditRow(tr, row) {
       alert("Preencha os campos EN e PT.")
       return
     }
-    if (!game || !mod) {
-      alert("Informe o game e o mod do item.")
-      return
-    }
-
     try {
       const updated = await g_fetchJSON(`/api/glossary/${id}`, {
         method: "PUT",
@@ -191,8 +186,8 @@ function g_enterEditRow(tr, row) {
         body: JSON.stringify({
           term_source: termSource,
           term_target: termTarget,
-          game,
-          mod,
+          game: game || null,
+          mod: mod || null,
           notes: notes || null,
           approved: approved ? 1 : 0,
         }),
@@ -279,11 +274,6 @@ function g_mountGlossaryForm() {
       alert("Preencha os campos de termo EN/PT.")
       return
     }
-    if (!game || !mod) {
-      alert("Informe o jogo e o mod antes de adicionar ao glossário.")
-      return
-    }
-
     try {
       await g_fetchJSON("/api/glossary", {
         method: "POST",
@@ -292,8 +282,8 @@ function g_mountGlossaryForm() {
           term_source: termSource,
           term_target: termTarget,
           notes: notes || null,
-          game,
-          mod,
+          game: game || null,
+          mod: mod || null,
           approved: 1,
         }),
       })

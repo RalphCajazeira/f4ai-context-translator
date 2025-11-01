@@ -96,20 +96,11 @@ function normalizeOptional(value) {
   return trimmed.length ? trimmed : null;
 }
 
-function buildGameModFilters(game, mod) {
+function buildGameModFilters(game) {
   const filters = [];
   const normalizedGame = normalizeOptional(game);
   if (normalizedGame) {
     filters.push({ OR: [{ game: normalizedGame }, { game: null }] });
-  }
-
-  const normalizedMod = normalizeOptional(mod);
-  if (normalizedMod) {
-    const modOptions = [{ mod: normalizedMod }, { mod: null }, { mod: "" }];
-    if (normalizedGame) {
-      modOptions.push({ game: normalizedGame });
-    }
-    filters.push({ OR: modOptions });
   }
 
   return filters;
@@ -136,13 +127,13 @@ class TranslateController {
     const mod = normalizeOptional(rawMod);
 
     const filters = { game, mod, srcLang: src, tgtLang: tgt };
-    const tmFilters = buildGameModFilters(game, mod);
+    const tmFilters = [];
     const normalizedSrc = normalizeOptional(src) ?? "";
     const normalizedTgt = normalizeOptional(tgt) ?? "";
     tmFilters.push({ OR: [{ srcLang: normalizedSrc }, { srcLang: "" }] });
     tmFilters.push({ OR: [{ tgtLang: normalizedTgt }, { tgtLang: "" }] });
 
-    const blacklistFilters = buildGameModFilters(game, mod);
+    const blacklistFilters = buildGameModFilters(game);
 
     const [shots, glossaryRows, suggestions, tmPairs, blacklistRows] =
       await Promise.all([

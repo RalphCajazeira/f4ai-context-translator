@@ -21,14 +21,12 @@ function parsePage(raw) {
 
 class BlacklistController {
   async index(request, response) {
-    const { game, mod, q = "", page = "1", limit = "25" } = request.query
+    const { game, q = "", page = "1", limit = "25" } = request.query
 
     const filters = []
 
     const gameFilter = normalizeNullable(game)
     if (gameFilter) filters.push({ OR: [{ game: gameFilter }, { game: null }] })
-    const modFilter = normalizeNullable(mod)
-    if (modFilter) filters.push({ OR: [{ mod: modFilter }, { mod: null }] })
 
     const searchTerm = normalizeSearchTerm(q)
     if (searchTerm) {
@@ -68,12 +66,8 @@ class BlacklistController {
       throw new AppError("term é obrigatório", 400)
     }
 
-    const normalizedGame = typeof game === "string" ? game.trim() : ""
-    const normalizedMod = typeof mod === "string" ? mod.trim() : ""
-
-    if (!normalizedGame || !normalizedMod) {
-      throw new AppError("game e mod são obrigatórios", 400)
-    }
+    const normalizedGame = normalizeNullable(game)
+    const normalizedMod = normalizeNullable(mod)
 
     const entry = await prisma.blacklistEntry.upsert({
       where: { term: normalized },
@@ -84,8 +78,8 @@ class BlacklistController {
         searchText: buildSearchVector(
           normalized,
           notes,
-          normalizedGame,
-          normalizedMod
+          normalizedGame ?? "",
+          normalizedMod ?? ""
         ),
       },
       create: {
@@ -96,8 +90,8 @@ class BlacklistController {
         searchText: buildSearchVector(
           normalized,
           notes,
-          normalizedGame,
-          normalizedMod
+          normalizedGame ?? "",
+          normalizedMod ?? ""
         ),
       },
     })
@@ -128,19 +122,11 @@ class BlacklistController {
     }
 
     if (game !== undefined) {
-      const normalizedGame = String(game || "").trim()
-      if (!normalizedGame) {
-        throw new AppError("game é obrigatório", 400)
-      }
-      updates.game = normalizedGame
+      updates.game = normalizeNullable(game)
     }
 
     if (mod !== undefined) {
-      const normalizedMod = String(mod || "").trim()
-      if (!normalizedMod) {
-        throw new AppError("mod é obrigatório", 400)
-      }
-      updates.mod = normalizedMod
+      updates.mod = normalizeNullable(mod)
     }
 
     if (!Object.keys(updates).length) {
@@ -157,9 +143,9 @@ class BlacklistController {
     const nextNotes =
       notes !== undefined ? (notes === null ? null : notes) : current.notes
     const nextGame =
-      game !== undefined ? String(game || "").trim() : current.game ?? null
+      game !== undefined ? normalizeNullable(game) : current.game ?? null
     const nextMod =
-      mod !== undefined ? String(mod || "").trim() : current.mod ?? null
+      mod !== undefined ? normalizeNullable(mod) : current.mod ?? null
 
     try {
       const entry = await prisma.blacklistEntry.update({

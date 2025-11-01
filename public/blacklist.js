@@ -176,16 +176,16 @@ function b_enterEditRow(tr, row) {
       alert("Informe o termo.")
       return
     }
-    if (!game || !mod) {
-      alert("Informe o game e o mod do termo.")
-      return
-    }
-
     try {
       const updated = await b_fetchJSON(`/api/blacklist/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ term, game, mod, notes: notes || null }),
+        body: JSON.stringify({
+          term,
+          game: game || null,
+          mod: mod || null,
+          notes: notes || null,
+        }),
       })
       tr.replaceWith(b_createRow(updated))
     } catch (error) {
@@ -267,16 +267,16 @@ function b_mountForm() {
       alert("Informe um termo.")
       return
     }
-    if (!game || !mod) {
-      alert("Informe o jogo e o mod antes de adicionar.")
-      return
-    }
-
     try {
       await b_fetchJSON("/api/blacklist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ term, notes: notes || null, game, mod }),
+        body: JSON.stringify({
+          term,
+          notes: notes || null,
+          game: game || null,
+          mod: mod || null,
+        }),
       })
       blacklistForm.reset()
       await b_loadBlacklist(1)
