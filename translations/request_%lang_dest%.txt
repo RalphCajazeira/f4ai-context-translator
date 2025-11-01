@@ -1,0 +1,53 @@
+there are these xTranslator fields do I need to put something there or change this query?
+
+and I tried to make a request through xTranslator and this appeared
+PS C:\Users\molek\Downloads\f4ai-context-translator\f4ai-context-translator> npm run dev
+
+> f4ai-context-translator@3.0.0 dev
+> node --enable-source-maps --watch --loader ./backend/src/loaders/alias-loader.mjs backend/src/server.js
+
+(node:20388) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+--import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./backend/src/loaders/alias-loader.mjs", pathToFileURL("./"));'
+(Use `node --trace-warnings ...` to show where the warning was created)
+Server is running on http://localhost:3333
+Unhandled error ReferenceError: matchedBlacklistRows is not defined
+    at XTranslatorController.handleChatCompletion (file:///C:/Users/molek/Downloads/f4ai-context-translator/f4ai-context-translator/backend/src/controllers/xtranslator-controller.js:142:61)
+
+in another test I did with a text there was a word from the glossary but it was not used, I believe that's because it is considering the mod name, but it is not supposed to consider the mod name to use the glossary or blacklist, consider only the game name because the mod should not be mandatory to fill in, as there are many words that are specific to the game, so remove that requirement from the page and elsewhere, also remove the requirement to enter the game name, there may be words that the AI gets wrong that have nothing to do with a game and I might want to ask it to use words that are not linked to any game.
+
+Plots  is in my glossary and its translation is Lote and it even has Notes to help the AI
+=== [translate] Request received ===
+src → tgt: en → pt-BR
+Original text:
+Agricultural Plots
+Glossary detected: []
+Blacklist detected: []
+[translate] Calling AI… (preserveLines: true , veryShort: true )
+[mt-client] noTranslate terms: 0
+[mt-client] regex NT: (no regex)
+[mt-client/http] → Sending to AI {
+  src: 'en',
+  tgt: 'pt-BR',
+  textPreview: 'Agricultural Plots',
+  shotsCount: 5,
+  glossaryCount: 0
+}
+[mt-client/http] ← AI response (preview): Agricultura
+[mt-client] Text after restoration (preview): Agricultura
+=== [translate] Final response ===
+best:
+Agricultura
+candidates: []
+matched.glossary: []
+matched.blacklist: []
+===================================
+
+Summary
+Glossary and Black list entries that have the name of a game, use them for that game; if there is no game name associated use them everywhere, and it is not supposed to consider the mod name for them to be used.
+The TM will always be used regardless of the game or the mod, because the TM already has validated translations, so if the original text is the same as some TM entry then it will use the TM instead of sending it to the AI. That's why we handle what comes from xTranslator, precisely to separate the items and see if they are in the TM, and when they are not we send everything else to the AI to translate in a single block, already using the glossary and blacklist if any are detected.
+You could put in the env whether I want to send it to the AI to translate line by line or the whole block at once, so we can set up something that makes this separation and lets you know how to enable it and the AI as well, the format that xTranslator itself sends already looks interesting for these separations, review everything and make this logic happen in a very optimized way, the important thing is that we can carry out the translation using our TM as a priority, and sending it to the AI and helping it as much as possible with the glossary and blacklist if it detects words or text that will be sent to the AI to translate.
+In Caps I was forced to fill in the name of a mod because it didn't allow me not to, whereas Caps is specific to Fallout, and the plot is not even from the Fallout universe it is a term used in real life, so I wouldn't even need to associate it with a game and every translation that was sent to the AI would use it.
+
+![image0.png](attachment:image0.png)
+
+![image1.png](attachment:image1.png)
