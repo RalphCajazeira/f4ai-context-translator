@@ -13,7 +13,7 @@ function normalizeOptional(value) {
   return trimmed.length ? trimmed : null;
 }
 
-function buildTmFilters({ srcLang, tgtLang, game, mod }) {
+export function buildTmFilters({ srcLang, tgtLang, game, mod }) {
   const filters = [];
   const normalizedSrc = normalizeOptional(srcLang) ?? "";
   const normalizedTgt = normalizeOptional(tgtLang) ?? "";
@@ -28,7 +28,11 @@ function buildTmFilters({ srcLang, tgtLang, game, mod }) {
 
   const normalizedMod = normalizeOptional(mod);
   if (normalizedMod) {
-    filters.push({ OR: [{ mod: normalizedMod }, { mod: null }] });
+    const modOptions = [{ mod: normalizedMod }, { mod: null }, { mod: "" }];
+    if (normalizedGame) {
+      modOptions.push({ game: normalizedGame });
+    }
+    filters.push({ OR: modOptions });
   }
 
   return filters;
@@ -64,7 +68,7 @@ export async function recordApproval(
   sourceText,
   targetText,
   src = "en",
-  tgt = "pt",
+  tgt = process.env.MT_TGT || "pt-BR",
   metadata = {}
 ) {
   const srcNorm = normalize(sourceText);
@@ -124,7 +128,11 @@ export async function getGlossary(options = {}) {
 
   const normalizedMod = normalizeOptional(mod);
   if (normalizedMod) {
-    filters.push({ OR: [{ mod: normalizedMod }, { mod: null }] });
+    const modOptions = [{ mod: normalizedMod }, { mod: null }, { mod: "" }];
+    if (normalizedGame) {
+      modOptions.push({ game: normalizedGame });
+    }
+    filters.push({ OR: modOptions });
   }
 
   return prisma.glossaryEntry.findMany({
@@ -136,7 +144,7 @@ export async function getGlossary(options = {}) {
 export async function getSuggestions(
   text,
   src = "en",
-  tgt = "pt",
+  tgt = process.env.MT_TGT || "pt-BR",
   topN = 8,
   options = {}
 ) {
