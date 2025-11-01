@@ -1,6 +1,6 @@
 # F4 AI Context Translator (LLM + TM + Glossário)
 
-Veja `.env.example` para configurar Ollama (Qwen2.5/LLama3.1) e o fallback M2M100.
+Veja `.env.example` para configurar Ollama (Qwen2.5/LLaMA 3.1) e o fallback M2M100.
 
 ## Backend (Express + Prisma)
 
