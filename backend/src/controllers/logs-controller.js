@@ -64,9 +64,26 @@ class LogsController {
       filters.push({ OR: [{ mod: modFilter }, { mod: null }] })
     }
 
+    const rawSearch = String(q ?? "").trim()
     const searchTerm = normalizeSearchTerm(q)
     if (searchTerm) {
-      filters.push({ searchText: { contains: searchTerm } })
+      const orFilters = [{ searchText: { contains: searchTerm } }]
+      if (rawSearch) {
+        const caseVariants = new Set([
+          rawSearch,
+          rawSearch.toLowerCase(),
+          rawSearch.toUpperCase(),
+          rawSearch[0]
+            ? rawSearch[0].toUpperCase() + rawSearch.slice(1).toLowerCase()
+            : rawSearch,
+        ])
+
+        for (const variant of caseVariants) {
+          orFilters.push({ sourceText: { contains: variant } })
+          orFilters.push({ targetText: { contains: variant } })
+        }
+      }
+      filters.push({ OR: orFilters })
     }
 
     const perPage = clampLimit(limit)

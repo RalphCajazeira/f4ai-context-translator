@@ -73,40 +73,42 @@
             <!-- Coluna 1 -->
             <section class="panel">
               <div class="panel-toolbar main-actions" role="group" aria-label="Ações do texto original">
-                <div class="button-stack">
-                  <button
-                    id="btnTranslate"
-                    class="btn btn-primary"
-                    title="Traduzir (gera log)"
-                  >
-                    Traduzir
-                  </button>
-                  <button
-                    id="btnPasteTranslate"
-                    class="btn btn-secondary"
-                    title="Colar e traduzir"
-                  >
-                    📥 Trad.
-                  </button>
-                  <button
-                    id="btnApproveAndNext"
-                    class="btn btn-accent"
-                    title="Aprovar tradução atual e iniciar a próxima"
-                  >
-                    ✅ Aprovar &amp; 📥 Próx.
-                  </button>
-                  <button
-                    id="btnApprove"
-                    class="btn btn-primary"
-                    title="Salvar par na TM (sem log)"
-                  >
-                    Aprovar na Memória
-                  </button>
-                </div>
-                <label class="keep-lines">
-                  <input type="checkbox" id="preserveLines" checked />
-                  Preservar quebras de linha
-                </label>
+                  <div class="main-actions__group">
+                    <label class="keep-lines">
+                      <input type="checkbox" id="preserveLines" checked />
+                      Preservar quebras de linha
+                    </label>
+                    <div class="button-stack">
+                      <button
+                        id="btnTranslate"
+                        class="btn btn-primary"
+                        title="Traduzir (gera log)"
+                      >
+                        Traduzir
+                      </button>
+                      <button
+                        id="btnPasteTranslate"
+                        class="btn btn-secondary"
+                        title="Colar e traduzir"
+                      >
+                        📥 Trad.
+                      </button>
+                      <button
+                        id="btnApproveAndNext"
+                        class="btn btn-accent"
+                        title="Aprovar tradução atual e iniciar a próxima"
+                      >
+                        ✅ Aprovar &amp; 📥 Próx.
+                      </button>
+                      <button
+                        id="btnApprove"
+                        class="btn btn-primary"
+                        title="Salvar par na TM (sem log)"
+                      >
+                        Aprovar na Memória
+                      </button>
+                    </div>
+                  </div>
               </div>
               <h3>Texto original</h3>
               <textarea

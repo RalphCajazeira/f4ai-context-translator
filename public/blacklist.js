@@ -8,6 +8,12 @@ const blacklistModInput = document.querySelector("#modName")
 
 const BLACKLIST_LIMIT = 50
 
+const blacklistCollator = new Intl.Collator("pt-BR", {
+  sensitivity: "base",
+  ignorePunctuation: true,
+  numeric: true,
+})
+
 const blacklistState = {
   page: 1,
   totalPages: 1,
@@ -215,13 +221,8 @@ async function b_loadBlacklist(page = blacklistState.page) {
     const data = await b_fetchJSON(`/api/blacklist?${params}`)
     const items = Array.isArray(data) ? data : data.items || []
 
-    // 👇 ordena ignorando caixa/acentos e com números naturais
     items.sort((a, b) =>
-      (a.term || "").localeCompare(b.term || "", "pt-BR", {
-        sensitivity: "base",
-        numeric: true,
-        ignorePunctuation: true,
-      })
+      blacklistCollator.compare(a?.term ?? "", b?.term ?? "")
     )
     const meta = Array.isArray(data)
       ? { page, total_pages: 1, total: items.length }
