@@ -27,20 +27,11 @@ import {
   buildContextBlock,
 } from "@/services/translation-rules.service.js";
 
-function buildGameModFilters(game, mod) {
+function buildGameModFilters(game) {
   const filters = [];
   const normalizedGame = normalizeNullable(game);
   if (normalizedGame) {
     filters.push({ OR: [{ game: normalizedGame }, { game: null }] });
-  }
-
-  const normalizedMod = normalizeNullable(mod);
-  if (normalizedMod) {
-    const modOptions = [{ mod: normalizedMod }, { mod: null }, { mod: "" }];
-    if (normalizedGame) {
-      modOptions.push({ game: normalizedGame });
-    }
-    filters.push({ OR: modOptions });
   }
 
   return filters;
@@ -89,7 +80,7 @@ class XTranslatorController {
       game,
       mod,
     });
-    const blacklistFilters = buildGameModFilters(game, mod);
+    const blacklistFilters = buildGameModFilters(game);
 
     const sourceNorms = normalizedItems
       .map((item) => item.sourceNorm)
@@ -137,9 +128,22 @@ class XTranslatorController {
     }));
 
     const matchedGlossary = pickGlossaryMatches(aggregatedSource, glossaryRows);
-    const matchedNoTranslate = pickBlacklistMatches(aggregatedSource, blacklistRows);
+    const matchedNoTranslate = pickBlacklistMatches(
+      aggregatedSource,
+      blacklistRows
+    );
 
-    const contextBlock = buildContextBlock(matchedGlossary, matchedBlacklistRows);
+    const blacklistByTerm = new Map(
+      (blacklistRows || []).map((row) => [String(row.term).toLowerCase(), row])
+    );
+    const matchedBlacklistRows = matchedNoTranslate
+      .map((term) => blacklistByTerm.get(String(term).toLowerCase()))
+      .filter(Boolean);
+
+    const contextBlock = buildContextBlock(
+      matchedGlossary,
+      matchedBlacklistRows
+    );
 
     const shotSources = normalizedItems.filter((item) => item.trimmed);
     const shotResults = shotSources.length
@@ -218,58 +222,17 @@ class XTranslatorController {
     );
 
     if (aiItems.length) {
+      const aiMode = String(
+        process.env.XTRANSLATOR_AI_MODE || "block"
+      ).toLowerCase();
+      const useLineMode = aiMode === "line";
+
       const startMarker = (index) => `⟪XT_ITEM_${index}_IN⟫`;
       const endMarker = (index) => `⟪XT_ITEM_${index}_OUT⟫`;
 
-      const segments = aiItems
-        .map(
-          (item) =>
-            `${startMarker(item.index)}\n${item.normalized}\n${endMarker(item.index)}`
-        )
-        .join("\n\n");
-
-      const markerList = aiItems.flatMap((item) => [
-        startMarker(item.index),
-        endMarker(item.index),
-      ]);
-      const aiNoTranslate = Array.from(
-        new Set([...matchedNoTranslate, ...markerList])
-      );
-
-      let aiOutput = segments;
-      if (segments.trim()) {
-        const contextualSegments = contextBlock
-          ? `${contextBlock}\n\n${segments}`
-          : segments;
-        aiOutput = await translateWithContext({
-          text: contextualSegments,
-          src,
-          tgt,
-          shots,
-          glossary: matchedGlossary,
-          noTranslate: aiNoTranslate,
-        });
-      }
-
-      const outText = String(aiOutput || segments);
-      let cursor = 0;
-
-      for (const item of aiItems) {
-        const start = startMarker(item.index);
-        const end = endMarker(item.index);
-        const startIdx = outText.indexOf(start, cursor);
-        let extracted = "";
-        if (startIdx !== -1) {
-          const contentStart = startIdx + start.length;
-          const endIdx = outText.indexOf(end, contentStart);
-          if (endIdx !== -1) {
-            extracted = outText.slice(contentStart, endIdx).trim();
-            cursor = endIdx + end.length;
-          }
-        }
-
-        if (!extracted) {
-          extracted = await translateItem({
+      if (useLineMode) {
+        for (const item of aiItems) {
+          const drafted = await translateItem({
             text: item.original,
             src,
             tgt,
@@ -279,11 +242,76 @@ class XTranslatorController {
             contextBlock,
             noTranslate: matchedNoTranslate,
           });
+
+          translations[item.index] =
+            (await postProcessTranslation(item.normalized, drafted)) ||
+            item.normalized;
+        }
+      } else {
+        const segments = aiItems
+          .map(
+            (item) =>
+              `${startMarker(item.index)}\n${item.normalized}\n${endMarker(item.index)}`
+          )
+          .join("\n\n");
+
+        const markerList = aiItems.flatMap((item) => [
+          startMarker(item.index),
+          endMarker(item.index),
+        ]);
+        const aiNoTranslate = Array.from(
+          new Set([...matchedNoTranslate, ...markerList])
+        );
+
+        let aiOutput = segments;
+        if (segments.trim()) {
+          const contextualSegments = contextBlock
+            ? `${contextBlock}\n\n${segments}`
+            : segments;
+          aiOutput = await translateWithContext({
+            text: contextualSegments,
+            src,
+            tgt,
+            shots,
+            glossary: matchedGlossary,
+            noTranslate: aiNoTranslate,
+          });
         }
 
-        translations[item.index] =
-          (await postProcessTranslation(item.normalized, extracted)) ||
-          item.normalized;
+        const outText = String(aiOutput || segments);
+        let cursor = 0;
+
+        for (const item of aiItems) {
+          const start = startMarker(item.index);
+          const end = endMarker(item.index);
+          const startIdx = outText.indexOf(start, cursor);
+          let extracted = "";
+          if (startIdx !== -1) {
+            const contentStart = startIdx + start.length;
+            const endIdx = outText.indexOf(end, contentStart);
+            if (endIdx !== -1) {
+              extracted = outText.slice(contentStart, endIdx).trim();
+              cursor = endIdx + end.length;
+            }
+          }
+
+          if (!extracted) {
+            extracted = await translateItem({
+              text: item.original,
+              src,
+              tgt,
+              shots,
+              preserveLines: true,
+              glossary: matchedGlossary,
+              contextBlock,
+              noTranslate: matchedNoTranslate,
+            });
+          }
+
+          translations[item.index] =
+            (await postProcessTranslation(item.normalized, extracted)) ||
+            item.normalized;
+        }
       }
     }
 
