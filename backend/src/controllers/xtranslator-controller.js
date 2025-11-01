@@ -201,6 +201,7 @@ class XTranslatorController {
     };
 
     const translations = new Array(items.length).fill("");
+    const translationEngines = new Array(items.length).fill("ai");
 
     for (const item of normalizedItems) {
       if (!item.trimmed) {
@@ -214,6 +215,7 @@ class XTranslatorController {
           item.normalized,
           projected
         );
+        translationEngines[item.index] = "tm";
       }
     }
 
@@ -230,7 +232,7 @@ class XTranslatorController {
       const startMarker = (index) => `⟪XT_ITEM_${index}_IN⟫`;
       const endMarker = (index) => `⟪XT_ITEM_${index}_OUT⟫`;
 
-      if (useLineMode) {
+      if (useLineMode || aiItems.length === 1) {
         for (const item of aiItems) {
           const drafted = await translateItem({
             text: item.original,
@@ -246,6 +248,7 @@ class XTranslatorController {
           translations[item.index] =
             (await postProcessTranslation(item.normalized, drafted)) ||
             item.normalized;
+          translationEngines[item.index] = "ai";
         }
       } else {
         const segments = aiItems
@@ -311,6 +314,7 @@ class XTranslatorController {
           translations[item.index] =
             (await postProcessTranslation(item.normalized, extracted)) ||
             item.normalized;
+          translationEngines[item.index] = "ai";
         }
       }
     }
@@ -348,6 +352,7 @@ class XTranslatorController {
         .map((entry) => ({
           sourceText: restoreMarkers(entry.source),
           targetText: restoreMarkers(entry.target),
+          engine: translationEngines[entry.position] ?? "ai",
           origin: "xtranslator",
           approved: 0,
           game,
@@ -356,6 +361,7 @@ class XTranslatorController {
             entry.source,
             entry.target,
             "xtranslator",
+            translationEngines[entry.position] ?? "ai",
             game ?? "",
             mod ?? ""
           ),

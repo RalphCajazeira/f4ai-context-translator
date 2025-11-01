@@ -633,12 +633,15 @@ function renderPending(rows = [], meta = {}) {
       li.dataset.id = row.id
       li.dataset.game = row.game || ""
       li.dataset.mod = row.mod || ""
+      const engineLabel =
+        String(row.engine || "ai").toLowerCase() === "tm" ? "TM" : "IA"
       li.innerHTML = `
         <div class="meta">
           <span class="line">#${row.id} • ${row.origin || "api"} • ${
         row.created_at || ""
       }</span>
           <span class="line tags">
+            <span class="tag tag-engine">${engineLabel}</span>
             <span class="tag">🎮 ${esc(row.game || "—")}</span>
             <span class="tag">🧩 ${esc(row.mod || "—")}</span>
           </span>
