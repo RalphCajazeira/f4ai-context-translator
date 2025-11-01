@@ -12,7 +12,11 @@ import {
   normalizeMarkers,
 } from "@/services/xtranslator.service.js";
 import { translateWithContext } from "@/services/mt-client.service.js";
-import { getGlossary, buildTmFilters } from "@/services/suggest.service.js";
+import {
+  getGlossary,
+  buildTmFilters,
+  topKExamples,
+} from "@/services/suggest.service.js";
 import { applyCaseLike, projectGlossaryCaseInSentence } from "@/services/case.service.js";
 import {
   normalizeForTm,
@@ -20,6 +24,7 @@ import {
   pickBlacklistMatches,
   applyGlossaryHardReplace,
   enforceAllCapsTerms,
+  buildContextBlock,
 } from "@/services/translation-rules.service.js";
 
 function buildGameModFilters(game, mod) {
@@ -134,8 +139,36 @@ class XTranslatorController {
     const matchedGlossary = pickGlossaryMatches(aggregatedSource, glossaryRows);
     const matchedNoTranslate = pickBlacklistMatches(aggregatedSource, blacklistRows);
 
-    const pairs = [...matchedGlossary, ...tmPairs];
+    const contextBlock = buildContextBlock(matchedGlossary, matchedBlacklistRows);
+
+    const shotSources = normalizedItems.filter((item) => item.trimmed);
+    const shotResults = shotSources.length
+      ? await Promise.all(
+          shotSources.map((item) =>
+            topKExamples(item.normalized, 2, {
+              srcLang: src,
+              tgtLang: tgt,
+              game,
+              mod,
+            })
+          )
+        )
+      : [];
     const shots = [];
+    const shotKeys = new Set();
+    for (const result of shotResults) {
+      for (const entry of result || []) {
+        if (!entry || !entry.src || !entry.tgt) continue;
+        const key = `${normalizeForTm(entry.src)}→${normalizeForTm(entry.tgt)}`;
+        if (shotKeys.has(key)) continue;
+        shotKeys.add(key);
+        shots.push({ src: entry.src, tgt: entry.tgt });
+        if (shots.length >= 5) break;
+      }
+      if (shots.length >= 5) break;
+    }
+
+    const pairs = [...matchedGlossary, ...tmPairs];
 
     const postProcessTranslation = async (original, draft) => {
       let best = String(draft || "");
@@ -205,10 +238,14 @@ class XTranslatorController {
 
       let aiOutput = segments;
       if (segments.trim()) {
+        const contextualSegments = contextBlock
+          ? `${contextBlock}\n\n${segments}`
+          : segments;
         aiOutput = await translateWithContext({
-          text: segments,
+          text: contextualSegments,
           src,
           tgt,
+          shots,
           glossary: matchedGlossary,
           noTranslate: aiNoTranslate,
         });
@@ -236,8 +273,10 @@ class XTranslatorController {
             text: item.original,
             src,
             tgt,
+            shots,
             preserveLines: true,
             glossary: matchedGlossary,
+            contextBlock,
             noTranslate: matchedNoTranslate,
           });
         }

@@ -21,6 +21,7 @@ import {
   buildContextBlock,
   applyGlossaryHardReplace,
   enforceAllCapsTerms,
+  buildWBRegex,
 } from "@/services/translation-rules.service.js";
 import { AppError } from "@/utils/app-error.js";
 import { buildSearchVector } from "@/utils/search.js";
@@ -131,12 +132,8 @@ class TranslateController {
       throw new AppError("text é obrigatório", 400);
     }
 
-    const game = typeof rawGame === "string" ? rawGame.trim() : "";
-    const mod = typeof rawMod === "string" ? rawMod.trim() : "";
-
-    if (!game || !mod) {
-      throw new AppError("game e mod são obrigatórios", 400);
-    }
+    const game = normalizeOptional(rawGame);
+    const mod = normalizeOptional(rawMod);
 
     const filters = { game, mod, srcLang: src, tgtLang: tgt };
     const tmFilters = buildGameModFilters(game, mod);
@@ -220,7 +217,7 @@ class TranslateController {
     }
 
     try {
-      const srcNorm = norm(text);
+      const srcNorm = normalizeForTm(text);
       let best = "";
 
       const FUZZY_PROMOTE_MIN = Number(process.env.TM_FUZZY_PROMOTE_MIN ?? 0.92);
