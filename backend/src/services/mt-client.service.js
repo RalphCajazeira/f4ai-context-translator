@@ -56,7 +56,11 @@ function restoreNoTranslate(text, originals) {
 }
 
 // ==== Ollama fallback ========================================================
-export async function forceTranslateWithOllama(text, src = "en", tgt = "pt") {
+export async function forceTranslateWithOllama(
+  text,
+  src = "en",
+  tgt = process.env.MT_TGT || "pt-BR"
+) {
   const prompt = [
     `Traduza o seguinte texto de ${src} para ${tgt}.`,
     `Responda apenas com a tradução, sem explicações, sem aspas:`,
@@ -131,7 +135,7 @@ async function callMtService({ text, src, tgt, shots = [], glossary = [] }) {
 export async function translateWithContext({
   text,
   src = process.env.MT_SRC || "en",
-  tgt = process.env.MT_TGT || "pt",
+  tgt = process.env.MT_TGT || "pt-BR",
   shots = [],
   glossary = [],
   noTranslate = [],

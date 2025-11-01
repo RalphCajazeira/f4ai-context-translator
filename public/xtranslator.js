@@ -7,6 +7,8 @@
   const approvedPager = document.getElementById("xtLogApprovedPager")
   const pendingSearch = document.getElementById("xtLogPendingSearch")
   const approvedSearch = document.getElementById("xtLogApprovedSearch")
+  const tabButtons = Array.from(document.querySelectorAll(".xt-tab-btn"))
+  const tabPanels = Array.from(document.querySelectorAll(".xt-tab-panel"))
 
   const requestList = document.getElementById("xtRequestList")
   const requestInfo = document.getElementById("xtRequestInfo")
@@ -17,6 +19,7 @@
     pending: { page: 1, totalPages: 1, total: 0, search: "" },
     approved: { page: 1, totalPages: 1, total: 0, search: "" },
     requests: { items: [], filtered: [], search: "" },
+    activeTab: "pending",
   }
 
   const debounceTimers = { pending: null, approved: null, requests: null }
@@ -136,6 +139,37 @@
     }
   }
 
+  function activateTab(tab, options = {}) {
+    if (!tabButtons.length || !tabPanels.length) return Promise.resolve()
+    const normalized = tab === "approved" ? "approved" : "pending"
+    const changed = state.activeTab !== normalized
+    state.activeTab = normalized
+
+    tabButtons.forEach((btn) => {
+      const isActive = btn.dataset.xtTab === normalized
+      btn.classList.toggle("active", isActive)
+      btn.setAttribute("aria-selected", isActive ? "true" : "false")
+    })
+
+    tabPanels.forEach((panel) => {
+      const isActive = panel.dataset.xtPanel === normalized
+      panel.classList.toggle("active", isActive)
+      if (isActive) {
+        panel.removeAttribute("hidden")
+      } else {
+        panel.setAttribute("hidden", "true")
+      }
+    })
+
+    if (changed || options.force) {
+      return normalized === "approved"
+        ? fetchApprovedItems()
+        : fetchPendingItems()
+    }
+
+    return Promise.resolve()
+  }
+
   async function fetchPendingItems(page = state.pending.page) {
     state.pending.page = page
     const params = new URLSearchParams({
@@ -243,8 +277,8 @@
         row.created_at || ""
       }</span>
           <span class="line tags">
-            <span class="tag">🎮 ${escapeHtml(row.game || "—")}</span>
-            <span class="tag">🧩 ${escapeHtml(row.mod || "—")}</span>
+            <span class="tag tag-game">🎮 ${escapeHtml(row.game || "—")}</span>
+            <span class="tag tag-mod">🧩 ${escapeHtml(row.mod || "—")}</span>
           </span>
         </div>
         <div><b>Original</b></div>
@@ -266,16 +300,25 @@
 
       li.querySelector(".save").addEventListener("click", async () => {
         try {
+          const { game, mod } = getContext()
+          const payloadGame = game || row.game
+          const payloadMod = mod || row.mod
           await fetchJson(`/api/logs/${row.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               source_text: srcTA.value,
               target_text: tgtTA.value,
-              game: row.game,
-              mod: row.mod,
+              game: payloadGame,
+              mod: payloadMod,
             }),
           })
+          row.game = payloadGame
+          row.mod = payloadMod
+          const gameTag = li.querySelector(".tag-game")
+          const modTag = li.querySelector(".tag-mod")
+          if (gameTag) gameTag.textContent = `🎮 ${payloadGame || "—"}`
+          if (modTag) modTag.textContent = `🧩 ${payloadMod || "—"}`
           notify("Tradução pendente atualizada.", "success")
         } catch (error) {
           notify("Não foi possível salvar a alteração.", "error")
@@ -285,16 +328,21 @@
 
       li.querySelector(".approve").addEventListener("click", async () => {
         try {
+          const { game, mod } = getContext()
+          const payloadGame = game || row.game
+          const payloadMod = mod || row.mod
           await fetchJson(`/api/logs/${row.id}/approve`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               source_text: srcTA.value,
               target_text: tgtTA.value,
-              game: row.game,
-              mod: row.mod,
+              game: payloadGame,
+              mod: payloadMod,
             }),
           })
+          row.game = payloadGame
+          row.mod = payloadMod
           notify("Item aprovado e enviado para a TM.", "success")
           await fetchPendingItems()
           await fetchApprovedItems()
@@ -353,8 +401,8 @@
         row.updated_at || row.created_at || ""
       }</span>
           <span class="line tags">
-            <span class="tag">🎮 ${escapeHtml(row.game || "—")}</span>
-            <span class="tag">🧩 ${escapeHtml(row.mod || "—")}</span>
+            <span class="tag tag-game">🎮 ${escapeHtml(row.game || "—")}</span>
+            <span class="tag tag-mod">🧩 ${escapeHtml(row.mod || "—")}</span>
           </span>
         </div>
         <div><b>Original</b></div>
@@ -384,6 +432,14 @@
   }
 
   function initEvents() {
+    tabButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const target = btn.dataset.xtTab
+        if (!target) return
+        activateTab(target)
+      })
+    })
+
     pendingPager?.addEventListener("click", (event) => {
       const btn = event.target.closest("button[data-dir]")
       if (!btn) return
@@ -438,7 +494,13 @@
 
   async function bootstrap() {
     initEvents()
-    await Promise.all([fetchPendingItems(), fetchApprovedItems(), fetchRequests()])
+    const tasks = [activateTab(state.activeTab, { force: true }), fetchRequests()]
+    if (state.activeTab === "approved") {
+      tasks.push(fetchPendingItems())
+    } else {
+      tasks.push(fetchApprovedItems())
+    }
+    await Promise.all(tasks)
   }
 
   window.initXTranslatorUI = bootstrap

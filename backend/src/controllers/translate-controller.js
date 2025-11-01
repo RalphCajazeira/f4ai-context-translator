@@ -13,19 +13,22 @@ import { translatePreservingLines } from "@/services/preserve-lines.service.js";
 import {
   projectGlossaryCaseInSentence,
   applyCaseLike,
-  extractAllCapsTerms,
-  replaceWordUnicode,
 } from "@/services/case.service.js";
+import {
+  normalizeForTm,
+  pickGlossaryMatches,
+  pickBlacklistMatches,
+  buildContextBlock,
+  applyGlossaryHardReplace,
+  enforceAllCapsTerms,
+  buildWBRegex,
+} from "@/services/translation-rules.service.js";
 import { AppError } from "@/utils/app-error.js";
 import { buildSearchVector } from "@/utils/search.js";
 
-function norm(value = "") {
-  return String(value).trim().replace(/\s+/g, " ").toLowerCase();
-}
-
 function tokenCosine(a, b) {
-  const A = norm(a).split(/\s+/).filter(Boolean);
-  const B = norm(b).split(/\s+/).filter(Boolean);
+  const A = normalizeForTm(a).split(/\s+/).filter(Boolean);
+  const B = normalizeForTm(b).split(/\s+/).filter(Boolean);
   if (!A.length || !B.length) return 0;
   const set = new Set([...A, ...B]);
   const va = [];
@@ -87,136 +90,6 @@ function adaptToggleOnOff(fromSourceNorm, fromTarget, toOriginal) {
   return out;
 }
 
-function reEscape(s) {
-  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function buildWBRegex(terms = []) {
-  const parts = [
-    ...new Set(terms.map((t) => String(t || "").trim()).filter(Boolean)),
-  ]
-    .sort((a, b) => b.length - a.length)
-    .map(reEscape);
-  if (!parts.length) return null;
-  return new RegExp(`(?<![\\w-])(?:${parts.join("|")})(?![\\w-])`, "gi");
-}
-
-function pickBlacklistMatches(text, rows) {
-  const terms = (rows || []).map((r) => r.term).filter(Boolean);
-  const re = buildWBRegex(terms);
-  if (!re) return [];
-  const found = new Set();
-  String(text).replace(re, (m) => {
-    found.add(m.toLowerCase());
-    return m;
-  });
-  return terms.filter((t) => found.has(String(t).toLowerCase()));
-}
-
-function pickGlossaryMatches(text, rows) {
-  const terms = (rows || []).map((r) => r.termSource).filter(Boolean);
-  const re = buildWBRegex(terms);
-  if (!re) return [];
-  const seen = new Set();
-  const byKey = new Map((rows || []).map((r) => [String(r.termSource).toLowerCase(), r]));
-  String(text).replace(re, (m) => {
-    seen.add(m.toLowerCase());
-    return m;
-  });
-  return [...seen].map((k) => byKey.get(k)).filter(Boolean);
-}
-
-function buildGlossPatterns(glossary = [], noTranslate = []) {
-  const blocked = new Set((noTranslate || []).map((t) => String(t).toLowerCase()));
-  const rows = (glossary || [])
-    .filter((g) => g && g.termSource && g.termTarget && (g.approved ?? 1))
-    .filter((g) => !blocked.has(String(g.termSource).toLowerCase()))
-    .sort((a, b) => b.termSource.length - a.termSource.length);
-  return rows.map((g) => {
-    const pat = `(?<![\\w-])${reEscape(g.termSource)}(?![\\w-])`;
-    return { re: new RegExp(pat, "gi"), target: g.termTarget };
-  });
-}
-
-function applyGlossaryHardReplace(sourceText, translatedText, glossary, noTranslate) {
-  if (!translatedText) return translatedText;
-  const patterns = buildGlossPatterns(glossary, noTranslate);
-  if (!patterns.length) return translatedText;
-  let out = String(translatedText);
-  for (const { re, target } of patterns) out = out.replace(re, target);
-  return out;
-}
-
-async function enforceAllCapsTerms({
-  original,
-  best,
-  src,
-  tgt,
-  shots,
-  glossary,
-}) {
-  let out = String(best || "");
-  const caps = extractAllCapsTerms(original);
-  if (!caps.length || !out) return out;
-
-  const uniqueCaps = Array.from(new Set(capsOnly(caps)));
-  for (const term of uniqueCaps) {
-    let t = "";
-    try {
-      const promptWord = `Traduza apenas esta palavra (forma básica):\n${term}`;
-      t = await translateWithContext({
-        text: promptWord,
-        src,
-        tgt,
-        shots,
-        glossary,
-      });
-      t = String(t || "")
-        .replace(/^\s*(?:traduza\s+apenas[^\n:]*:\s*)/i, "")
-        .replace(/^.*?\n/, "")
-        .trim();
-    } catch {
-      t = "";
-    }
-    if (!t) continue;
-    const projected = applyCaseLike(term, t);
-    out = replaceWordUnicode(out, t, projected);
-  }
-  return out;
-}
-
-function capsOnly(arr) {
-  const set = new Set();
-  for (const w of arr) {
-    if (/\b[\p{Lu}]{2,}\b/u.test(w)) set.add(w);
-  }
-  return Array.from(set);
-}
-
-function buildContextBlock(matchedGlossary = [], matchedBlacklistRows = []) {
-  const lines = [];
-  if (matchedBlacklistRows.length) {
-    lines.push("### CONTEXTO — BLACKLIST (não traduzir):");
-    for (const b of matchedBlacklistRows) {
-      const term = b.term;
-      const notes = (b.notes || "").trim();
-      lines.push(`- ${term}${notes ? ` — ${notes}` : ""}`);
-    }
-    lines.push("");
-  }
-  if (matchedGlossary.length) {
-    lines.push("### CONTEXTO — GLOSSÁRIO (usar tradução fixa):");
-    for (const g of matchedGlossary) {
-      const src = g.termSource;
-      const tgt = g.termTarget;
-      const notes = (g.notes || "").trim();
-      lines.push(`- ${src} → ${tgt}${notes ? ` — ${notes}` : ""}`);
-    }
-    lines.push("");
-  }
-  return lines.length ? lines.join("\n") : "";
-}
-
 function normalizeOptional(value) {
   if (value === undefined || value === null) return null;
   const trimmed = String(value).trim();
@@ -232,7 +105,11 @@ function buildGameModFilters(game, mod) {
 
   const normalizedMod = normalizeOptional(mod);
   if (normalizedMod) {
-    filters.push({ OR: [{ mod: normalizedMod }, { mod: null }] });
+    const modOptions = [{ mod: normalizedMod }, { mod: null }, { mod: "" }];
+    if (normalizedGame) {
+      modOptions.push({ game: normalizedGame });
+    }
+    filters.push({ OR: modOptions });
   }
 
   return filters;
@@ -243,7 +120,7 @@ class TranslateController {
     const {
       text,
       src = process.env.MT_SRC || "en",
-      tgt = process.env.MT_TGT || "pt",
+      tgt = process.env.MT_TGT || "pt-BR",
       preserveLines = true,
       log = false,
       origin = "ui",
@@ -255,12 +132,8 @@ class TranslateController {
       throw new AppError("text é obrigatório", 400);
     }
 
-    const game = typeof rawGame === "string" ? rawGame.trim() : "";
-    const mod = typeof rawMod === "string" ? rawMod.trim() : "";
-
-    if (!game || !mod) {
-      throw new AppError("game e mod são obrigatórios", 400);
-    }
+    const game = normalizeOptional(rawGame);
+    const mod = normalizeOptional(rawMod);
 
     const filters = { game, mod, srcLang: src, tgtLang: tgt };
     const tmFilters = buildGameModFilters(game, mod);
@@ -344,7 +217,7 @@ class TranslateController {
     }
 
     try {
-      const srcNorm = norm(text);
+      const srcNorm = normalizeForTm(text);
       let best = "";
 
       const FUZZY_PROMOTE_MIN = Number(process.env.TM_FUZZY_PROMOTE_MIN ?? 0.92);
@@ -538,7 +411,7 @@ class TranslateController {
       log_id,
       removeFromLog = true,
       src_lang = process.env.MT_SRC || "en",
-      tgt_lang = process.env.MT_TGT || "pt",
+      tgt_lang = process.env.MT_TGT || "pt-BR",
       game = null,
       mod = null,
     } = request.body || {};

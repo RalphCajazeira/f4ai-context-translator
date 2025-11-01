@@ -398,10 +398,40 @@
               ></ul>
             </section>
 
-            <section class="logs-row">
-              <section class="panel log">
-                <div class="log-header">
-                  <h3>Itens xTranslator — Pendentes</h3>
+            <section class="panel log xt-items">
+              <div class="xt-items-header">
+                <h3>Itens xTranslator</h3>
+                <div class="xt-items-tabs" role="tablist" aria-label="Filtrar itens do xTranslator">
+                  <button
+                    type="button"
+                    class="xt-tab-btn active"
+                    data-xt-tab="pending"
+                    role="tab"
+                    aria-selected="true"
+                    id="xt-tab-pending"
+                  >
+                    Pendentes
+                  </button>
+                  <button
+                    type="button"
+                    class="xt-tab-btn"
+                    data-xt-tab="approved"
+                    role="tab"
+                    aria-selected="false"
+                    id="xt-tab-approved"
+                  >
+                    Aprovados
+                  </button>
+                </div>
+              </div>
+
+              <div class="xt-tab-panels">
+                <div
+                  class="xt-tab-panel active"
+                  data-xt-panel="pending"
+                  role="tabpanel"
+                  aria-labelledby="xt-tab-pending"
+                >
                   <label class="sr-only" for="xtLogPendingSearch"
                     >Pesquisar itens pendentes</label
                   >
@@ -411,25 +441,28 @@
                     placeholder="Pesquisar itens pendentes por texto, game ou mod"
                     autocomplete="off"
                   />
-                </div>
-                <div class="list-controls">
-                  <span id="xtLogPendingInfo" class="list-info">0 itens</span>
-                  <div class="pager" id="xtLogPendingPager">
-                    <button type="button" class="btn btn-ghost" data-dir="prev" aria-label="Página anterior">◀</button>
-                    <button type="button" class="btn btn-ghost" data-dir="next" aria-label="Próxima página">▶</button>
+                  <div class="list-controls">
+                    <span id="xtLogPendingInfo" class="list-info">0 itens</span>
+                    <div class="pager" id="xtLogPendingPager">
+                      <button type="button" class="btn btn-ghost" data-dir="prev" aria-label="Página anterior">◀</button>
+                      <button type="button" class="btn btn-ghost" data-dir="next" aria-label="Próxima página">▶</button>
+                    </div>
                   </div>
+                  <ul
+                    id="xtLogPending"
+                    class="log-list"
+                    data-empty
+                    data-empty-label="Nenhum item pendente no momento."
+                  ></ul>
                 </div>
-                <ul
-                  id="xtLogPending"
-                  class="log-list"
-                  data-empty
-                  data-empty-label="Nenhum item pendente no momento."
-                ></ul>
-              </section>
 
-              <section class="panel log">
-                <div class="log-header">
-                  <h3>Itens xTranslator — Aprovados</h3>
+                <div
+                  class="xt-tab-panel"
+                  data-xt-panel="approved"
+                  role="tabpanel"
+                  aria-labelledby="xt-tab-approved"
+                  hidden
+                >
                   <label class="sr-only" for="xtLogApprovedSearch"
                     >Pesquisar itens aprovados</label
                   >
@@ -439,21 +472,21 @@
                     placeholder="Pesquisar itens aprovados por texto, game ou mod"
                     autocomplete="off"
                   />
-                </div>
-                <div class="list-controls">
-                  <span id="xtLogApprovedInfo" class="list-info">0 itens</span>
-                  <div class="pager" id="xtLogApprovedPager">
-                    <button type="button" class="btn btn-ghost" data-dir="prev" aria-label="Página anterior">◀</button>
-                    <button type="button" class="btn btn-ghost" data-dir="next" aria-label="Próxima página">▶</button>
+                  <div class="list-controls">
+                    <span id="xtLogApprovedInfo" class="list-info">0 itens</span>
+                    <div class="pager" id="xtLogApprovedPager">
+                      <button type="button" class="btn btn-ghost" data-dir="prev" aria-label="Página anterior">◀</button>
+                      <button type="button" class="btn btn-ghost" data-dir="next" aria-label="Próxima página">▶</button>
+                    </div>
                   </div>
+                  <ul
+                    id="xtLogApproved"
+                    class="log-list"
+                    data-empty
+                    data-empty-label="Nenhum item aprovado ainda."
+                  ></ul>
                 </div>
-                <ul
-                  id="xtLogApproved"
-                  class="log-list"
-                  data-empty
-                  data-empty-label="Nenhum item aprovado ainda."
-                ></ul>
-              </section>
+              </div>
             </section>
           </div>
         </section>
