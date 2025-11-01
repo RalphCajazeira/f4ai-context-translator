@@ -1,4 +1,8 @@
-import { translateWithContext, forceTranslateWithOllama } from "@/services/mt-client.service.js";
+import {
+  translateWithContext,
+  forceTranslateWithOllama,
+} from "@/services/mt-client.service.js";
+import { promoteViaTm } from "@/services/tm.service.js";
 
 function normalizeForCompare(value = "") {
   return String(value)
@@ -15,12 +19,38 @@ async function translatePreservingLines({
   glossary,
   contextBlock = "",
   noTranslate = [],
+  tmPairs = [],
+  tmConfig = {},
 }) {
   const lines = String(text || "").split(/\r?\n/);
   const out = [];
+  const cache = new Map();
+  const {
+    fuzzyPromoteMin = 0.92,
+    maxLenDelta = 0.1,
+    requirePatch = true,
+  } = tmConfig || {};
   for (const ln of lines) {
     if (ln.trim() === "") {
       out.push("");
+      continue;
+    }
+
+    if (cache.has(ln)) {
+      out.push(cache.get(ln));
+      continue;
+    }
+
+    const tmResult = promoteViaTm({
+      text: ln,
+      tmPairs,
+      fuzzyPromoteMin,
+      maxLenDelta,
+      requirePatch,
+    });
+    if (tmResult?.translation) {
+      cache.set(ln, tmResult.translation);
+      out.push(tmResult.translation);
       continue;
     }
 
@@ -51,10 +81,13 @@ async function translatePreservingLines({
         const forced = await forceTranslateWithOllama(ln, src, tgt);
         if (normalizeForCompare(forced) !== normalizeForCompare(ln)) clean = forced;
       }
+      cache.set(ln, clean);
       out.push(clean);
     } catch {
       try {
-        out.push((await forceTranslateWithOllama(ln, src, tgt)) || ln);
+        const forced = (await forceTranslateWithOllama(ln, src, tgt)) || ln;
+        cache.set(ln, forced);
+        out.push(forced);
       } catch {
         out.push(ln);
       }
