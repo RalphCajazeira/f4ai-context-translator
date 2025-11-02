@@ -26,98 +26,34 @@ function restoreMarkers(value = "") {
   return String(value).replace(/\n/g, "<L_F>");
 }
 
-function normalizeNewlines(value = "") {
-  return String(value ?? "").replace(/\r\n/g, "\n");
-}
-
-function isPreflightText(text = "") {
-  return String(text).includes("<L_F>");
-}
-
-function formatPreflightResponse(text = "") {
-  const segments = String(text).split("<L_F>");
-  return segments
-    .map((segment) => {
-      if (segment.trim().length === 0) {
-        return segment;
-      }
-      const leading = segment.match(/^\s*/)?.[0] ?? "";
-      const body = segment.slice(leading.length);
-      return `${leading}Resposta ${body}`;
-    })
-    .join("<L_F>");
-}
-
-function parseFinalStructure(text = "") {
-  const normalized = normalizeNewlines(text);
-  const trimmed = normalized.trim();
-  if (!trimmed) {
-    return { records: [], units: [], hasParagraphBreaks: false };
+function splitIntoItems(text = "") {
+  const normalized = normalizeMarkers(text);
+  const items = [];
+  const separators = [];
+  const regex = /\n{3,}/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = regex.exec(normalized))) {
+    const chunk = normalized.slice(lastIndex, match.index);
+    items.push(chunk);
+    separators.push(match[0]);
+    lastIndex = match.index + match[0].length;
   }
-
-  const hasParagraphBreaks = /\n\s*\n/.test(normalized);
-  const records = [];
-  const units = [];
-
-  if (hasParagraphBreaks) {
-    const chunks = normalized.split(/\n{2,}/);
-    for (const chunk of chunks) {
-      const lineEntries = chunk
-        .split(/\n/)
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0);
-      if (!lineEntries.length) continue;
-      const record = { unitIndices: [] };
-      for (const line of lineEntries) {
-        const index = units.length;
-        units.push({ index, text: line });
-        record.unitIndices.push(index);
-      }
-      records.push(record);
-    }
-  } else {
-    const lineEntries = normalized
-      .split(/\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-    for (const line of lineEntries) {
-      const index = units.length;
-      units.push({ index, text: line });
-      records.push({ unitIndices: [index] });
-    }
+  const tail = normalized.slice(lastIndex);
+  if (tail !== "" || !items.length) {
+    items.push(tail);
   }
-
-  return { records, units, hasParagraphBreaks };
+  return { items, separators };
 }
 
-function buildFormattedResponse({
-  records = [],
-  units = [],
-  translations = [],
-  hasParagraphBreaks = false,
-} = {}) {
-  if (!records.length) return "";
-  const recordOutputs = [];
-  for (let recordIdx = 0; recordIdx < records.length; recordIdx += 1) {
-    const record = records[recordIdx];
-    if (!record?.unitIndices?.length) continue;
-    const numberingBase = recordIdx + 1;
-    const lineOutputs = record.unitIndices.map((unitIndex, innerIdx) => {
-      const numbering =
-        record.unitIndices.length > 1
-          ? `${numberingBase}.${innerIdx + 1}`
-          : `${numberingBase}`;
-      const content =
-        translations[unitIndex]?.trim?.() ?? units[unitIndex]?.text ?? "";
-      return `Resposta ${numbering} ${content}`.trim();
-    });
-    if (lineOutputs.length) {
-      recordOutputs.push(lineOutputs.join("\n"));
-    }
+function composeFromItems(items = [], separators = []) {
+  const pieces = [];
+  const total = Math.max(items.length, separators.length + 1);
+  for (let i = 0; i < total; i++) {
+    if (i < items.length) pieces.push(items[i]);
+    if (i < separators.length) pieces.push(separators[i]);
   }
-
-  const separator = hasParagraphBreaks ? "\n\n" : "\n";
-  return recordOutputs.join(separator);
+  return pieces.join("");
 }
 
 export {
@@ -126,9 +62,6 @@ export {
   extractText,
   normalizeMarkers,
   restoreMarkers,
-  normalizeNewlines,
-  isPreflightText,
-  formatPreflightResponse,
-  parseFinalStructure,
-  buildFormattedResponse,
+  splitIntoItems,
+  composeFromItems,
 };

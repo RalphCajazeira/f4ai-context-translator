@@ -5,12 +5,10 @@ import {
   extractUserMessage,
   extractPrompt,
   extractText,
-  normalizeMarkers,
+  splitIntoItems,
+  composeFromItems,
   restoreMarkers,
-  isPreflightText,
-  formatPreflightResponse,
-  parseFinalStructure,
-  buildFormattedResponse,
+  normalizeMarkers,
 } from "@/services/xtranslator.service.js";
 import { translateWithContext } from "@/services/mt-client.service.js";
 import {
@@ -95,47 +93,10 @@ class XTranslatorController {
       throw new AppError("Texto para tradução ausente", 400);
     }
 
-    if (isPreflightText(textToTranslate)) {
-      const placeholder = formatPreflightResponse(textToTranslate);
-
-      const requestRecord = await prisma.xTranslatorRequest.create({
-        data: {
-          externalId:
-            request.body?.id !== undefined && request.body?.id !== null
-              ? String(request.body.id)
-              : null,
-          model,
-          prompt,
-          rawSource: textToTranslate,
-          rawResponse: placeholder,
-          status: "preflight",
-        },
-      });
-
-      response.set("X-Phase", "PRE");
-
-      return response.json({
-        id: `xtranslator-${requestRecord.id}`,
-        object: "chat.completion",
-        created: Math.floor(Date.now() / 1000),
-        model,
-        choices: [
-          {
-            index: 0,
-            message: { role: "assistant", content: placeholder },
-            finish_reason: "stop",
-          },
-        ],
-      });
-    }
-
     const game = normalizeNullable(metadata.game);
     const mod = normalizeNullable(metadata.mod);
 
-    const { records, units, hasParagraphBreaks } = parseFinalStructure(
-      textToTranslate
-    );
-    const items = units.map((unit) => unit.text);
+    const { items, separators } = splitIntoItems(textToTranslate);
 
     const normalizedItems = items.map((chunk, index) => {
       const normalized = normalizeMarkers(chunk);
@@ -391,12 +352,8 @@ class XTranslatorController {
       }
     }
 
-    const formattedResponse = buildFormattedResponse({
-      records,
-      units,
-      translations,
-      hasParagraphBreaks,
-    });
+    const normalizedResponse = composeFromItems(translations, separators);
+    const finalResponse = restoreMarkers(normalizedResponse);
 
     const requestRecord = await prisma.xTranslatorRequest.create({
       data: {
@@ -446,7 +403,7 @@ class XTranslatorController {
       await prisma.xTranslatorRequest.update({
         where: { id: requestRecord.id },
         data: {
-          rawResponse: formattedResponse,
+          rawResponse: finalResponse,
           status: "completed",
         },
       });
@@ -458,8 +415,6 @@ class XTranslatorController {
       throw error;
     }
 
-    response.set("X-Phase", "FINAL");
-
     return response.json({
       id: `xtranslator-${requestRecord.id}`,
       object: "chat.completion",
@@ -468,7 +423,7 @@ class XTranslatorController {
       choices: [
         {
           index: 0,
-          message: { role: "assistant", content: formattedResponse },
+          message: { role: "assistant", content: finalResponse },
           finish_reason: "stop",
         },
       ],
