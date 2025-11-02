@@ -23,6 +23,7 @@ else:
     # (com suporte a GPU opcional) e garanta acesso ao modelo ``facebook/m2m100_418M``.
     # Enquanto essas dependências não estiverem disponíveis, o serviço apenas devolve
     # o texto original sem tradução.
+    pass  # <-- Necessário para evitar IndentationError
 
 class MTReq(BaseModel):
     text: str
@@ -37,7 +38,11 @@ def translate(req: MTReq):
     encoded = tokenizer(req.text, return_tensors="pt")
     if 'torch' in globals():
         encoded = encoded.to(device)
-    generated = model.generate(**encoded, forced_bos_token_id=tokenizer.get_lang_id(req.tgt), max_new_tokens=512)
+    generated = model.generate(
+        **encoded,
+        forced_bos_token_id=tokenizer.get_lang_id(req.tgt),
+        max_new_tokens=512
+    )
     out = tokenizer.batch_decode(generated, skip_special_tokens=True)[0]
     return {"text": out}
 
@@ -72,7 +77,6 @@ def build_prompt(text: str, src: str, tgt: str, shots: List[LLMShot], glossary: 
     lines.append("Responda apenas com a tradução do trecho acima, mantendo exatamente as mesmas quebras de linha e sem acrescentar exemplos, observações ou traduções extras.")
     lines.append("Não use blocos de código ou qualquer formatação Markdown na resposta; devolva somente o texto em texto plano.")
     return "\n".join(lines)
-
 
 @app.post("/llm-translate")
 def llm_translate(req: LLMReq):
