@@ -24,3 +24,13 @@ test("applyCaseLike mirrors uppercase, lowercase and title case with accents", (
   assert.equal(applyCaseLike("ação", "CAFÉ"), "café")
   assert.equal(applyCaseLike("Olá Mundo", "árvore encantada"), "Árvore Encantada")
 })
+
+test("replaceWordUnicode ignores partial occurrences embedded in larger words", () => {
+  const text =
+    "Termos como superAÇÃO ou AÇÃOzinho devem permanecer, mas AÇÃO isolada muda."
+  const result = replaceWordUnicode(text, "AÇÃO", "resposta")
+  assert.equal(
+    result,
+    "Termos como superAÇÃO ou AÇÃOzinho devem permanecer, mas resposta isolada muda.",
+  )
+})
