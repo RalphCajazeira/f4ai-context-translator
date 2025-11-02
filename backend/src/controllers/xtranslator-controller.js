@@ -10,7 +10,6 @@ import {
   restoreMarkers,
   normalizeMarkers,
 } from "@/services/xtranslator.service.js";
-import { translateWithContext } from "@/services/mt-client.service.js";
 import {
   getGlossary,
   buildTmFilters,
@@ -23,8 +22,8 @@ import {
   pickBlacklistMatches,
   applyGlossaryHardReplace,
   enforceAllCapsTerms,
-  buildContextBlock,
 } from "@/services/translation-rules.service.js";
+import { translateTextPreservingStructure } from "@/services/xtranslator-line.service.js";
 
 function buildGameModFilters(game) {
   const filters = [];
@@ -171,15 +170,6 @@ class XTranslatorController {
     const blacklistByTerm = new Map(
       (blacklistRows || []).map((row) => [String(row.term).toLowerCase(), row])
     );
-    const matchedBlacklistRows = matchedNoTranslate
-      .map((term) => blacklistByTerm.get(String(term).toLowerCase()))
-      .filter(Boolean);
-
-    const contextBlock = buildContextBlock(
-      matchedGlossary,
-      matchedBlacklistRows
-    );
-
     const shotSources = normalizedItems.filter((item) => item.trimmed);
     const shotResults = shotSources.length
       ? await Promise.all(
@@ -259,76 +249,55 @@ class XTranslatorController {
     );
 
     if (aiItems.length) {
-      const startMarker = (index) => `⟪XT_ITEM_${index}_IN⟫`;
-      const endMarker = (index) => `⟪XT_ITEM_${index}_OUT⟫`;
-
-      const segments = aiItems
-        .map(
-          (item) =>
-            `${startMarker(item.index)}\n${item.normalized}\n${endMarker(item.index)}`
-        )
-        .join("\n\n");
-
-      const markerList = aiItems.flatMap((item) => [
-        startMarker(item.index),
-        endMarker(item.index),
-      ]);
-      const aiNoTranslate = Array.from(
-        new Set([...matchedNoTranslate, ...markerList])
-      );
-
-      let aiOutput = segments;
-      if (segments.trim()) {
-        const contextualSegments = contextBlock
-          ? `${contextBlock}\n\n${segments}`
-          : segments;
-        aiOutput = await translateWithContext({
-          text: contextualSegments,
-          src,
-          tgt,
-          shots,
-          glossary: matchedGlossary,
-          noTranslate: aiNoTranslate,
-        });
-      }
-
-      const outText = String(aiOutput || "");
-      let cursor = 0;
+      const aiNoTranslate = Array.from(new Set(matchedNoTranslate));
+      const lineCache = new Map();
+      const segmentCache = new Map();
 
       for (const item of aiItems) {
-        const start = startMarker(item.index);
-        const end = endMarker(item.index);
-        const startIdx = outText.indexOf(start, cursor);
-        let extracted = "";
-        if (startIdx !== -1) {
-          const contentStart = startIdx + start.length;
-          const endIdx = outText.indexOf(end, contentStart);
-          if (endIdx !== -1) {
-            extracted = outText.slice(contentStart, endIdx);
-            cursor = endIdx + end.length;
-          }
-        }
-
-        const cleaned = sanitizeSegment(extracted, item.normalized);
-        const normalizedCandidate = normalizeNewlines(cleaned);
         let accepted = false;
-
-        if (
-          normalizedCandidate &&
-          structuresMatch(item.normalized, normalizedCandidate)
-        ) {
-          const processed = await postProcessTranslation(
+        try {
+          const translatedBlock = await translateTextPreservingStructure(
             item.normalized,
-            normalizedCandidate
+            {
+              src,
+              tgt,
+              shots,
+              glossary: matchedGlossary,
+              noTranslate: aiNoTranslate,
+              lineCache,
+              segmentCache,
+            }
           );
-          const processedNormalized = normalizeNewlines(processed);
+
+          const cleaned = sanitizeSegment(translatedBlock, item.normalized);
+          const normalizedCandidate = normalizeNewlines(cleaned);
+
           if (
-            processedNormalized &&
-            structuresMatch(item.normalized, processedNormalized)
+            normalizedCandidate &&
+            structuresMatch(item.normalized, normalizedCandidate)
           ) {
-            translations[item.index] = processedNormalized;
-            translationEngines[item.index] = "ai";
-            accepted = true;
+            const processed = await postProcessTranslation(
+              item.normalized,
+              normalizedCandidate
+            );
+            const processedNormalized = normalizeNewlines(processed);
+            if (
+              processedNormalized &&
+              structuresMatch(item.normalized, processedNormalized)
+            ) {
+              translations[item.index] = processedNormalized;
+              translationEngines[item.index] = "ai";
+              accepted = true;
+            }
+          }
+        } catch (error) {
+          if (process.env.MT_LOG !== "0") {
+            console.warn(
+              "[xtranslator] Erro ao traduzir item — mantendo texto original (idx:",
+              item.index,
+              ")",
+              error
+            );
           }
         }
 
