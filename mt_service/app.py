@@ -10,7 +10,7 @@ try:
 except Exception:
     USE_TRANSFORMERS = False
 
-app = FastAPI(title="MT Service: LLM (Ollama) + M2M100 fallback")
+app = FastAPI(title="MT Service: LLM (Ollama) + M2M100 fallback (sem transformers o texto é devolvido como veio)")
 
 MODEL_NAME = "facebook/m2m100_418M"
 if USE_TRANSFORMERS:
@@ -18,6 +18,11 @@ if USE_TRANSFORMERS:
     model = M2M100ForConditionalGeneration.from_pretrained(MODEL_NAME)
     device = "cuda" if 'torch' in globals() and torch.cuda.is_available() else "cpu"
     model.to(device)
+else:
+    # Para habilitar o fallback real com M2M100, instale os pacotes ``transformers`` e ``torch``
+    # (com suporte a GPU opcional) e garanta acesso ao modelo ``facebook/m2m100_418M``.
+    # Enquanto essas dependências não estiverem disponíveis, o serviço apenas devolve
+    # o texto original sem tradução.
 
 class MTReq(BaseModel):
     text: str
