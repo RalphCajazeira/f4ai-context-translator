@@ -1,5 +1,6 @@
 import fetch from "node-fetch"
 import dotenv from "dotenv"
+import { buildWordBoundaryRegex } from "@/utils/text-patterns.js"
 dotenv.config()
 
 // ==== ENV / Defaults =========================================================
@@ -19,21 +20,6 @@ function normalize(s) {
     .trim()
     .replace(/\s+/g, " ")
     .toLowerCase()
-}
-
-function reEscape(s) {
-  return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-}
-
-// palavra OU hífen como “borda” (ex.: não casa dentro de otherWords)
-function buildWBRegex(terms = []) {
-  const parts = [
-    ...new Set(terms.map((t) => String(t || "").trim()).filter(Boolean)),
-  ]
-    .sort((a, b) => b.length - a.length)
-    .map(reEscape)
-  if (!parts.length) return null
-  return new RegExp(`(?<![\\w-])(?:${parts.join("|")})(?![\\w-])`, "gi")
 }
 
 const TOKEN_RE = /__NT(\d+)__/g
@@ -96,16 +82,38 @@ export async function forceTranslateWithOllama(
 }
 
 // ==== MT Service (FastAPI/HTTP) =============================================
+function previewGlossaryEntries(glossary = []) {
+  if (!Array.isArray(glossary) || !glossary.length) return []
+  const items = glossary
+    .filter((entry) => entry && (entry.termSource || entry.term || entry.src))
+    .map((entry) => {
+      if (entry.termSource && entry.termTarget) {
+        return `${entry.termSource} → ${entry.termTarget}`
+      }
+      if (entry.src && entry.tgt) {
+        return `${entry.src} → ${entry.tgt}`
+      }
+      if (entry.term) {
+        return String(entry.term)
+      }
+      return JSON.stringify(entry)
+    })
+
+  return items.slice(0, 10)
+}
+
 async function callMtService({ text, src, tgt, shots = [], glossary = [] }) {
   const payload = { text, src, tgt, shots, glossary }
 
   if (MT_LOG_ENABLED) {
+    const glossaryPreview = previewGlossaryEntries(glossary)
     console.log("[mt-client/http] → Enviando para IA", {
       src,
       tgt,
       textPreview: String(text).slice(0, 300),
       shotsCount: Array.isArray(shots) ? shots.length : 0,
       glossaryCount: Array.isArray(glossary) ? glossary.length : 0,
+      glossaryPreview,
     })
   }
 
@@ -144,12 +152,18 @@ export async function translateWithContext({
   if (!MT_ENABLED) return String(text)
 
   // 0) Protege blacklist
-  const regex = buildWBRegex(noTranslate)
+  const regex = buildWordBoundaryRegex(noTranslate)
   const { text: masked, originals } = protectNoTranslate(String(text), regex)
 
   if (MT_LOG_ENABLED) {
     console.log("[mt-client] noTranslate termos:", (noTranslate || []).length)
     console.log("[mt-client] regex NT:", regex ? String(regex) : "(sem regex)")
+    if (glossary && glossary.length) {
+      console.log(
+        "[mt-client] Glossário aplicado:",
+        previewGlossaryEntries(glossary)
+      )
+    }
     if (masked !== text) {
       console.log(
         "[mt-client] Texto mascarado (preview):",

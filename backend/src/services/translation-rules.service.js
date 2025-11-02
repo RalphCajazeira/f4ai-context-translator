@@ -1,4 +1,5 @@
 import { translateWithContext } from "@/services/mt-client.service.js";
+import { buildWordBoundaryRegex } from "@/utils/text-patterns.js";
 import {
   applyCaseLike,
   extractAllCapsTerms,
@@ -9,18 +10,19 @@ function normalizeForTm(value = "") {
   return String(value).trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+function normalizeTermKey(value = "") {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function reEscape(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function buildWBRegex(terms = []) {
-  const parts = [
-    ...new Set(terms.map((t) => String(t || "").trim()).filter(Boolean)),
-  ]
-    .sort((a, b) => b.length - a.length)
-    .map(reEscape);
-  if (!parts.length) return null;
-  return new RegExp(`(?<![\\w-])(?:${parts.join("|")})(?![\\w-])`, "gi");
+  return buildWordBoundaryRegex(terms);
 }
 
 function pickBlacklistMatches(text, rows) {
@@ -29,10 +31,11 @@ function pickBlacklistMatches(text, rows) {
   if (!regex) return [];
   const found = new Set();
   String(text).replace(regex, (m) => {
-    found.add(m.toLowerCase());
+    const key = normalizeTermKey(m);
+    if (key) found.add(key);
     return m;
   });
-  return terms.filter((term) => found.has(String(term).toLowerCase()));
+  return terms.filter((term) => found.has(normalizeTermKey(term)));
 }
 
 function pickGlossaryMatches(text, rows) {
@@ -41,10 +44,11 @@ function pickGlossaryMatches(text, rows) {
   if (!regex) return [];
   const seen = new Set();
   const byKey = new Map(
-    (rows || []).map((r) => [String(r.termSource).toLowerCase(), r])
+    (rows || []).map((r) => [normalizeTermKey(r.termSource), r])
   );
   String(text).replace(regex, (m) => {
-    seen.add(m.toLowerCase());
+    const key = normalizeTermKey(m);
+    if (key) seen.add(key);
     return m;
   });
   return [...seen].map((key) => byKey.get(key)).filter(Boolean);
