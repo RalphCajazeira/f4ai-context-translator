@@ -1,5 +1,6 @@
 import fetch from "node-fetch"
 import dotenv from "dotenv"
+import { buildWordBoundaryRegex } from "@/utils/text-patterns.js"
 dotenv.config()
 
 // ==== ENV / Defaults =========================================================
@@ -19,21 +20,6 @@ function normalize(s) {
     .trim()
     .replace(/\s+/g, " ")
     .toLowerCase()
-}
-
-function reEscape(s) {
-  return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-}
-
-// palavra OU hífen como “borda” (ex.: não casa dentro de otherWords)
-function buildWBRegex(terms = []) {
-  const parts = [
-    ...new Set(terms.map((t) => String(t || "").trim()).filter(Boolean)),
-  ]
-    .sort((a, b) => b.length - a.length)
-    .map(reEscape)
-  if (!parts.length) return null
-  return new RegExp(`(?<![\\w-])(?:${parts.join("|")})(?![\\w-])`, "gi")
 }
 
 const TOKEN_RE = /__NT(\d+)__/g
@@ -144,7 +130,7 @@ export async function translateWithContext({
   if (!MT_ENABLED) return String(text)
 
   // 0) Protege blacklist
-  const regex = buildWBRegex(noTranslate)
+  const regex = buildWordBoundaryRegex(noTranslate)
   const { text: masked, originals } = protectNoTranslate(String(text), regex)
 
   if (MT_LOG_ENABLED) {
