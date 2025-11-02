@@ -26,7 +26,11 @@ class SegmentsController {
 
   async index(request, response) {
     const { limit, game, mod } = request.query;
-    const take = Math.min(Number(limit) || 200, 1000);
+
+    const parsedLimit = Number(limit);
+    const hasValidLimit = Number.isFinite(parsedLimit) && parsedLimit > 0;
+    const desiredLimit = hasValidLimit ? Math.floor(parsedLimit) : 200;
+    const take = Math.max(1, Math.min(desiredLimit, 1000));
 
     const filters = [];
     if (game) filters.push({ OR: [{ game }, { game: null }] });
