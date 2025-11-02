@@ -294,25 +294,89 @@ class XTranslatorController {
       const aiNoTranslate = Array.from(new Set(matchedNoTranslate));
       const lineCache = new Map();
       const segmentCache = new Map();
+      const aiBaseOptions = {
+        src,
+        tgt,
+        shots,
+        glossary: matchedGlossary,
+        noTranslate: aiNoTranslate,
+        lineCache,
+        segmentCache,
+      };
 
       logDebug("Itens enviados para IA", aiItems.map((item) => item.index));
       logDebug("noTranslate aplicado na IA", aiNoTranslate);
 
-      for (const item of aiItems) {
+      const aiSeparators = new Array(Math.max(aiItems.length - 1, 0)).fill(
+        "\n\n\n"
+      );
+      const aiSourceBlock = composeFromItems(
+        aiItems.map((item) => item.normalized),
+        aiSeparators
+      );
+
+      try {
+        logDebug("→ IA (bloco) texto", aiSourceBlock);
+        const translatedBlock = await translateTextPreservingStructure(
+          aiSourceBlock,
+          aiBaseOptions
+        );
+        const normalizedBlock = normalizeNewlines(translatedBlock);
+        const { items: translatedItems } = splitIntoItems(normalizedBlock);
+
+        if (translatedItems.length === aiItems.length) {
+          for (let i = 0; i < aiItems.length; i += 1) {
+            const item = aiItems[i];
+            const candidate = sanitizeSegment(translatedItems[i], item.normalized);
+            const normalizedCandidate = normalizeNewlines(candidate);
+            if (
+              normalizedCandidate &&
+              structuresMatch(item.normalized, normalizedCandidate)
+            ) {
+              const processed = await postProcessTranslation(
+                item.normalized,
+                normalizedCandidate
+              );
+              const processedNormalized = normalizeNewlines(processed);
+              if (
+                processedNormalized &&
+                structuresMatch(item.normalized, processedNormalized)
+              ) {
+                translations[item.index] = processedNormalized;
+                translationEngines[item.index] = "ai";
+                logDebug(
+                  `← IA (item ${item.index}) texto aceito`,
+                  processedNormalized
+                );
+              }
+            }
+          }
+        } else if (process.env.MT_LOG !== "0") {
+          console.warn(
+            "[xtranslator] IA retornou quantidade inesperada de itens — fallback por item"
+          );
+        }
+      } catch (error) {
+        if (process.env.MT_LOG !== "0") {
+          console.warn(
+            "[xtranslator] Erro ao traduzir bloco — fallback por item",
+            error
+          );
+        }
+      }
+
+      const aiIndexSet = new Set(aiItems.map((item) => item.index));
+      const pendingItems = normalizedItems.filter(
+        (item) => item.trimmed && !translations[item.index] && aiIndexSet.has(item.index)
+      );
+
+      for (const item of pendingItems) {
         let accepted = false;
         try {
           logDebug(`→ IA (item ${item.index}) texto`, item.normalized);
           const translatedBlock = await translateTextPreservingStructure(
             item.normalized,
-            {
-              src,
-              tgt,
-              shots,
-              glossary: matchedGlossary,
-              noTranslate: aiNoTranslate,
-              lineCache,
-              segmentCache,
-            }
+            aiBaseOptions
           );
 
           const cleaned = sanitizeSegment(translatedBlock, item.normalized);
