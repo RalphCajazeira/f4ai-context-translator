@@ -25,6 +25,17 @@ import {
 } from "@/services/translation-rules.service.js";
 import { translateTextPreservingStructure } from "@/services/xtranslator-line.service.js";
 
+const LOG_ENABLED = process.env.MT_LOG !== "0";
+
+function logDebug(message, payload) {
+  if (!LOG_ENABLED) return;
+  if (payload === undefined) {
+    console.log(`[xtranslator] ${message}`);
+  } else {
+    console.log(`[xtranslator] ${message}`, payload);
+  }
+}
+
 function buildGameModFilters(game) {
   const filters = [];
   const normalizedGame = normalizeNullable(game);
@@ -95,6 +106,11 @@ class XTranslatorController {
     const game = normalizeNullable(metadata.game);
     const mod = normalizeNullable(metadata.mod);
 
+    logDebug("=== Nova solicitação xTranslator ===");
+    logDebug("Prompt recebido", prompt);
+    logDebug("Texto bruto recebido", textToTranslate);
+    logDebug("Metadados", { src, tgt, game, mod });
+
     const { items, separators } = splitIntoItems(textToTranslate);
 
     const normalizedItems = items.map((chunk, index) => {
@@ -103,6 +119,13 @@ class XTranslatorController {
       const sourceNorm = normalizeForTm(normalized);
       return { index, original: chunk, normalized, trimmed, sourceNorm };
     });
+
+    if (LOG_ENABLED) {
+      for (const item of normalizedItems) {
+        logDebug(`Item ${item.index} (original)`, item.original);
+        logDebug(`Item ${item.index} (normalizado)`, item.normalized);
+      }
+    }
 
     const aggregatedSource = normalizedItems
       .map((item) => item.normalized)
@@ -167,6 +190,16 @@ class XTranslatorController {
       blacklistRows
     );
 
+    logDebug(
+      "Glossário encontrado",
+      matchedGlossary.map((entry) => ({
+        termSource: entry.termSource,
+        termTarget: entry.termTarget,
+        notes: entry.notes,
+      }))
+    );
+    logDebug("Blacklist encontrada", matchedNoTranslate);
+
     const blacklistByTerm = new Map(
       (blacklistRows || []).map((row) => [String(row.term).toLowerCase(), row])
     );
@@ -198,6 +231,11 @@ class XTranslatorController {
     }
 
     const pairs = [...matchedGlossary, ...tmPairs];
+
+    logDebug(
+      "Exemplos (shots) selecionados",
+      shots.map((entry) => `${entry.src} → ${entry.tgt}`)
+    );
 
     const postProcessTranslation = async (original, draft) => {
       let best = String(draft || "");
@@ -236,6 +274,10 @@ class XTranslatorController {
       const tmHit = item.sourceNorm ? tmByNorm.get(item.sourceNorm) : null;
       if (tmHit?.targetText) {
         const projected = applyCaseLike(item.normalized, tmHit.targetText);
+        logDebug(`TM encontrado para item ${item.index}`, {
+          source: item.normalized,
+          target: tmHit.targetText,
+        });
         translations[item.index] = await postProcessTranslation(
           item.normalized,
           projected
@@ -253,9 +295,13 @@ class XTranslatorController {
       const lineCache = new Map();
       const segmentCache = new Map();
 
+      logDebug("Itens enviados para IA", aiItems.map((item) => item.index));
+      logDebug("noTranslate aplicado na IA", aiNoTranslate);
+
       for (const item of aiItems) {
         let accepted = false;
         try {
+          logDebug(`→ IA (item ${item.index}) texto`, item.normalized);
           const translatedBlock = await translateTextPreservingStructure(
             item.normalized,
             {
@@ -288,6 +334,10 @@ class XTranslatorController {
               translations[item.index] = processedNormalized;
               translationEngines[item.index] = "ai";
               accepted = true;
+              logDebug(
+                `← IA (item ${item.index}) texto aceito`,
+                processedNormalized
+              );
             }
           }
         } catch (error) {
@@ -310,6 +360,7 @@ class XTranslatorController {
               item.index,
               ")"
             );
+            logDebug(`IA rejeitada — mantendo original (item ${item.index})`);
           }
         }
       }
@@ -323,6 +374,9 @@ class XTranslatorController {
 
     const normalizedResponse = composeFromItems(translations, separators);
     const finalResponse = restoreMarkers(normalizedResponse);
+
+    logDebug("Traduções consolidadas", translations);
+    logDebug("Resposta final", finalResponse);
 
     const requestRecord = await prisma.xTranslatorRequest.create({
       data: {

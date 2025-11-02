@@ -26,3 +26,16 @@ test("pickGlossaryMatches finds glossary entries split by markers", () => {
   assert.strictEqual(matches.length, 1)
   assert.strictEqual(matches[0].termSource, "Magic Sword")
 })
+
+test("pickGlossaryMatches detects single-word glossary terms", () => {
+  const rows = [
+    { termSource: "Plot", termTarget: "Enredo", notes: "" },
+    { termSource: "Spacer", termTarget: "Separador", notes: "" },
+  ]
+  const text = "Plot\nSpacers should remain aligned."
+
+  const matches = pickGlossaryMatches(text, rows)
+
+  assert.strictEqual(matches.length, 1)
+  assert.strictEqual(matches[0].termSource, "Plot")
+})
