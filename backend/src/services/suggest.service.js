@@ -13,13 +13,23 @@ function normalizeOptional(value) {
   return trimmed.length ? trimmed : null;
 }
 
-export function buildTmFilters({ srcLang, tgtLang }) {
+export function buildTmFilters({ srcLang, tgtLang, game, mod }) {
   const filters = [];
   const normalizedSrc = normalizeOptional(srcLang) ?? "";
   const normalizedTgt = normalizeOptional(tgtLang) ?? "";
+  const normalizedGame = normalizeOptional(game);
+  const normalizedMod = normalizeOptional(mod);
 
   filters.push({ OR: [{ srcLang: normalizedSrc }, { srcLang: "" }] });
   filters.push({ OR: [{ tgtLang: normalizedTgt }, { tgtLang: "" }] });
+
+  if (normalizedGame !== null) {
+    filters.push({ OR: [{ game: normalizedGame }, { game: null }] });
+  }
+
+  if (normalizedMod !== null) {
+    filters.push({ OR: [{ mod: normalizedMod }, { mod: null }] });
+  }
 
   return filters;
 }
@@ -69,16 +79,29 @@ export async function recordApproval(
     where: {
       sourceNorm: srcNorm,
       AND: filters,
-      targetText,
     },
+    orderBy: [
+      { updatedAt: "desc" },
+      { id: "desc" },
+    ],
   });
 
   if (existing) {
+    const targetChanged = existing.targetText !== targetText;
+    const nextUses = Number(existing.uses || 0) + 1;
+    const currentQuality = Number.isFinite(existing.quality)
+      ? existing.quality
+      : 0.9;
+    const nextQuality = targetChanged
+      ? 0.92
+      : Math.min(1, currentQuality + 0.02);
+
     await prisma.translationMemoryEntry.update({
       where: { id: existing.id },
       data: {
-        uses: existing.uses + 1,
-        quality: Math.min(1, existing.quality + 0.02),
+        targetText,
+        uses: nextUses,
+        quality: nextQuality,
         srcLang: existing.srcLang || srcLang,
         tgtLang: existing.tgtLang || tgtLang,
         game: existing.game ?? game,
