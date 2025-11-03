@@ -8,11 +8,19 @@ export const MT_BACKEND = process.env.MT_BACKEND || "ollama"
 export const MT_URL =
   process.env.MT_URL || "http://localhost:8001/llm-translate"
 export const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434"
-export const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "qwen2.5:7b-instruct"
+export const OLLAMA_PRIMARY_MODEL =
+  process.env.OLLAMA_MODEL || "llama3.1:8b-instruct-q4_K_M"
+export const OLLAMA_LIGHT_MODEL =
+  process.env.OLLAMA_LIGHT_MODEL || process.env.OLLAMA_MODEL_LIGHT || ""
+export const OLLAMA_MODEL = OLLAMA_PRIMARY_MODEL
 export const MT_ENABLED =
   String(process.env.MT_ENABLED || "true").toLowerCase() === "true"
 
 const MT_LOG_ENABLED = process.env.MT_LOG !== "0" // 1 ou 2 = ligado
+
+const LIGHT_WORD_LIMIT = parseLimit(process.env.OLLAMA_LIGHT_MAX_WORDS)
+const LIGHT_CHAR_LIMIT = parseLimit(process.env.OLLAMA_LIGHT_MAX_CHARS)
+const LIGHT_LIMITS_ACTIVE = LIGHT_WORD_LIMIT > 0 || LIGHT_CHAR_LIMIT > 0
 
 // ==== Helpers ================================================================
 function normalize(s) {
@@ -41,11 +49,40 @@ function restoreNoTranslate(text, originals) {
   return String(text).replace(TOKEN_RE, (_, n) => originals[Number(n)] ?? _)
 }
 
+function parseLimit(raw) {
+  if (raw === undefined || raw === null) return 0
+  const n = Number.parseInt(String(raw), 10)
+  return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+function countWords(text) {
+  const trimmed = String(text || "").trim()
+  if (!trimmed) return 0
+  return trimmed.split(/\s+/u).filter(Boolean).length
+}
+
+function shouldUseLightModel(wordCount, charCount) {
+  if (!OLLAMA_LIGHT_MODEL || !LIGHT_LIMITS_ACTIVE) return false
+  const wordsOk = !LIGHT_WORD_LIMIT || wordCount <= LIGHT_WORD_LIMIT
+  const charsOk = !LIGHT_CHAR_LIMIT || charCount <= LIGHT_CHAR_LIMIT
+  return wordsOk && charsOk
+}
+
+function chooseModelForSegment(text) {
+  const raw = String(text ?? "")
+  const wordCount = countWords(raw)
+  const charCount = raw.length
+  const useLight = shouldUseLightModel(wordCount, charCount)
+  const model = useLight ? OLLAMA_LIGHT_MODEL : OLLAMA_PRIMARY_MODEL
+  return { model, wordCount, charCount, useLight }
+}
+
 // ==== Ollama fallback ========================================================
 export async function forceTranslateWithOllama(
   text,
   src = "en",
-  tgt = process.env.MT_TGT || "pt-BR"
+  tgt = process.env.MT_TGT || "pt-BR",
+  modelName = OLLAMA_PRIMARY_MODEL
 ) {
   const prompt = [
     `Traduza o seguinte texto de ${src} para ${tgt}.`,
@@ -55,13 +92,18 @@ export async function forceTranslateWithOllama(
   ].join("\n")
 
   const body = {
-    model: OLLAMA_MODEL,
+    model: modelName,
     prompt,
     stream: false,
   }
 
   if (MT_LOG_ENABLED) {
-    console.log("[mt-client/ollama] → prompt (preview):", prompt.slice(0, 300))
+    console.log(
+      "[mt-client/ollama] →",
+      modelName,
+      "prompt (preview):",
+      prompt.slice(0, 300)
+    )
   }
 
   const r = await fetch(`${OLLAMA_URL}/api/generate`, {
@@ -75,7 +117,12 @@ export async function forceTranslateWithOllama(
   const out = String(j?.response || "").trim()
 
   if (MT_LOG_ENABLED) {
-    console.log("[mt-client/ollama] ← resposta (preview):", out.slice(0, 300))
+    console.log(
+      "[mt-client/ollama] ←",
+      modelName,
+      "resposta (preview):",
+      out.slice(0, 300)
+    )
   }
 
   return out
@@ -102,8 +149,16 @@ function previewGlossaryEntries(glossary = []) {
   return items.slice(0, 10)
 }
 
-async function callMtService({ text, src, tgt, shots = [], glossary = [] }) {
+async function callMtService({
+  text,
+  src,
+  tgt,
+  shots = [],
+  glossary = [],
+  model,
+}) {
   const payload = { text, src, tgt, shots, glossary }
+  if (model) payload.model = model
 
   if (MT_LOG_ENABLED) {
     const glossaryPreview = previewGlossaryEntries(glossary)
@@ -114,6 +169,7 @@ async function callMtService({ text, src, tgt, shots = [], glossary = [] }) {
       shotsCount: Array.isArray(shots) ? shots.length : 0,
       glossaryCount: Array.isArray(glossary) ? glossary.length : 0,
       glossaryPreview,
+      model,
     })
   }
 
@@ -151,6 +207,21 @@ export async function translateWithContext({
 }) {
   if (!MT_ENABLED) return String(text)
 
+  const decision = chooseModelForSegment(text)
+
+  if (MT_LOG_ENABLED) {
+    console.log("[mt-client] Seleção de modelo", {
+      selectedModel: decision.model,
+      usedLightModel: decision.useLight,
+      wordCount: decision.wordCount,
+      charCount: decision.charCount,
+      lightLimits: {
+        words: LIGHT_WORD_LIMIT,
+        chars: LIGHT_CHAR_LIMIT,
+      },
+    })
+  }
+
   // 0) Protege blacklist
   const regex = buildWordBoundaryRegex(noTranslate)
   const { text: masked, originals } = protectNoTranslate(String(text), regex)
@@ -178,10 +249,22 @@ export async function translateWithContext({
   try {
     let mtOut = ""
     if (useHttp) {
-      mtOut = await callMtService({ text: masked, src, tgt, shots, glossary })
+      mtOut = await callMtService({
+        text: masked,
+        src,
+        tgt,
+        shots,
+        glossary,
+        model: decision.model,
+      })
     } else {
       // “ollama-direct”: traduz sem serviço HTTP intermediário
-      mtOut = await forceTranslateWithOllama(masked, src, tgt)
+      mtOut = await forceTranslateWithOllama(
+        masked,
+        src,
+        tgt,
+        decision.model
+      )
     }
 
     // 2) Restaura blacklist
@@ -199,7 +282,15 @@ export async function translateWithContext({
       if (MT_LOG_ENABLED) {
         console.log("[mt-client] Saída ~= entrada. Tentando fallback Ollama…")
       }
-      const forced = await forceTranslateWithOllama(masked, src, tgt)
+      const fallbackModel = decision.useLight
+        ? OLLAMA_PRIMARY_MODEL
+        : decision.model
+      const forced = await forceTranslateWithOllama(
+        masked,
+        src,
+        tgt,
+        fallbackModel
+      )
       return restoreNoTranslate(forced || masked, originals)
     }
 
@@ -207,7 +298,15 @@ export async function translateWithContext({
   } catch (e) {
     console.warn("[mt-client] MT service falhou:", e?.message || e)
     try {
-      const forced = await forceTranslateWithOllama(masked, src, tgt)
+      const fallbackModel = decision.useLight
+        ? OLLAMA_PRIMARY_MODEL
+        : decision.model
+      const forced = await forceTranslateWithOllama(
+        masked,
+        src,
+        tgt,
+        fallbackModel
+      )
       return restoreNoTranslate(forced || masked, originals)
     } catch (e2) {
       console.warn(

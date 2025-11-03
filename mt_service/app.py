@@ -56,6 +56,7 @@ class LLMReq(BaseModel):
     tgt: Optional[str] = "pt"
     shots: List[LLMShot] = []
     glossary: List[Dict[str, Any]] = []
+    model: Optional[str] = None
 
 def build_prompt(text: str, src: str, tgt: str, shots: List[LLMShot], glossary: List[Dict[str,str]]) -> str:
     lines = []
@@ -81,9 +82,13 @@ def build_prompt(text: str, src: str, tgt: str, shots: List[LLMShot], glossary: 
 @app.post("/llm-translate")
 def llm_translate(req: LLMReq):
     ollama_url = os.environ.get("OLLAMA_URL","http://localhost:11434")
-    model = os.environ.get("OLLAMA_MODEL","qwen2.5:7b-instruct")
+    model = req.model or os.environ.get("OLLAMA_MODEL","llama3.1:8b-instruct-q4_K_M")
     prompt = build_prompt(req.text, req.src, req.tgt, req.shots, req.glossary)
-    r = requests.post(f"{ollama_url}/api/generate", json={"model": model, "prompt": prompt, "stream": False}, timeout=120)
+    r = requests.post(
+        f"{ollama_url}/api/generate",
+        json={"model": model, "prompt": prompt, "stream": False},
+        timeout=120
+    )
     if r.status_code != 200:
         return {"text": req.text}
     out = r.json().get("response","").strip()
